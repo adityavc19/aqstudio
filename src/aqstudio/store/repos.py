@@ -1,6 +1,7 @@
 """Repositories for uploads and briefs. Parameterised SQL only."""
 
 import json
+import secrets
 import time
 import uuid
 from dataclasses import dataclass
@@ -189,3 +190,30 @@ def _hydrate(row: tuple[Any, ...]) -> StoredBrief:
         evidence_rows=json.loads(evidence) if evidence else {},
         error=ErrorBody.model_validate_json(error) if error else None,
     )
+
+
+class ShareRepo:
+    """Unguessable public links to a brief's citizen view."""
+
+    def __init__(self, db: Database) -> None:
+        """Keep the database handle."""
+        self._db = db
+
+    def share(self, brief_id: str) -> str:
+        """Return the brief's share id, creating one if needed."""
+        with self._db.connect() as conn:
+            row = conn.execute("SELECT id FROM shares WHERE brief_id = ?", (brief_id,)).fetchone()
+            if row:
+                return str(row[0])
+            share_id = secrets.token_urlsafe(16)
+            conn.execute(
+                "INSERT INTO shares (id, brief_id, created_at) VALUES (?, ?, ?)",
+                (share_id, brief_id, time.time()),
+            )
+        return share_id
+
+    def brief_id(self, share_id: str) -> str | None:
+        """The brief behind a share id."""
+        with self._db.connect() as conn:
+            row = conn.execute("SELECT brief_id FROM shares WHERE id = ?", (share_id,)).fetchone()
+        return str(row[0]) if row else None

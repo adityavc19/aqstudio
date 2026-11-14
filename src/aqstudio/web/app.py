@@ -23,10 +23,10 @@ from aqstudio.llm.client import LLMClient
 from aqstudio.llm.sarvam_client import SarvamClient
 from aqstudio.store.db import Database
 from aqstudio.store.limits import UsageLimiter
-from aqstudio.store.repos import BriefRepo, UploadRepo
+from aqstudio.store.repos import BriefRepo, ShareRepo, UploadRepo
 from aqstudio.web.deps import Deps
 from aqstudio.web.errors import install_error_handlers
-from aqstudio.web.routes import briefs, health, locations, render, uploads
+from aqstudio.web.routes import briefs, citizen, health, locations, render, uploads
 from aqstudio.web.security import install_security
 
 _SESSION_MAX_AGE = 30 * 24 * 3600
@@ -76,6 +76,7 @@ def create_app(
             settings.database_path, UPLOAD_RATE_LIMIT_PER_HOUR, UPLOAD_DAILY_CAP, scope="upload"
         ),
         llm=llm if llm is not None else _build_llm(settings, db),
+        shares=ShareRepo(db),
         translator=translator or _build_translator(settings),
     )
     db.purge_expired(time.time())
@@ -95,6 +96,7 @@ def create_app(
     app.include_router(briefs.router, prefix="/api")
     app.include_router(locations.router, prefix="/api")
     app.include_router(render.router, prefix="/api")
+    app.include_router(citizen.router, prefix="/api")
     frontend = Path(settings.frontend_dir)
     if frontend.is_dir():
         app.mount("/", StaticFiles(directory=frontend, html=True), name="frontend")

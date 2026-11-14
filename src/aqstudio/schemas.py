@@ -534,3 +534,23 @@ class Rendered(BaseModel):
     citations_preserved: bool
     fact_ids: list[str]
     disclaimer: str
+
+
+class ShareCreated(BaseModel):
+    """Response of POST /briefs/{id}/share."""
+
+    share_id: str
+    url: str
+
+
+class CitizenPage(BaseModel):
+    """Public, read-only view of a shared brief: no raw upload data."""
+
+    share_id: str
+    created_at: AwareDatetime
+    period: str | None
+    status_line: str
+    worst_category: str
+    stations: list[StationInfo]
+    data_note: str
+    notice: str

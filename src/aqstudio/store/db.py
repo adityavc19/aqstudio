@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS llm_cache (
     key TEXT PRIMARY KEY, value TEXT NOT NULL, created_at REAL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_uploads_created ON uploads (created_at);
+CREATE TABLE IF NOT EXISTS shares (
+    id TEXT PRIMARY KEY, brief_id TEXT NOT NULL UNIQUE, created_at REAL NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_briefs_created ON briefs (created_at);
 """
 

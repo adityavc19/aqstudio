@@ -9,7 +9,7 @@ from aqstudio.advisory.translate import Translator
 from aqstudio.llm.client import LLMClient
 from aqstudio.store.db import Database
 from aqstudio.store.limits import UsageLimiter
-from aqstudio.store.repos import BriefRepo, UploadRepo
+from aqstudio.store.repos import BriefRepo, ShareRepo, UploadRepo
 
 
 @dataclass(frozen=True)
@@ -22,6 +22,7 @@ class Deps:
     limiter: UsageLimiter
     upload_limiter: UsageLimiter
     llm: LLMClient | None
+    shares: ShareRepo
     translator: Translator | None = None
 
 
