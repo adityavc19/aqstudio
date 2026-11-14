@@ -93,7 +93,7 @@ def test_security_and_error_shape(settings: Settings) -> None:
     wide = client.post(
         "/api/uploads", json={"text": "Year,2017\nJanuary-2017,00:00:00,01:00:00\n1,5,6"}
     )
-    assert wide.json()["error"]["code"] == "unsupported_format"
+    assert wide.json()["error"]["code"] == "labels_required"
     evil = client.post(
         "/api/uploads", json={"text": hourly_csv()}, headers={"origin": "https://evil.example"}
     )

@@ -10,6 +10,7 @@ from aqstudio.clean.normalize import clean_long
 from aqstudio.config import PREVIEW_ROWS
 from aqstudio.ingest.errors import IngestError
 from aqstudio.ingest.parse_long import parse_long_csv
+from aqstudio.ingest.parse_wide import table_to_csv, wide_to_long
 from aqstudio.ingest.propose import propose_mapping
 from aqstudio.ingest.sniff import DetectedFormat, detect_format
 from aqstudio.quality.detectors import detect_all
@@ -23,7 +24,7 @@ from aqstudio.schemas import (
     UploadResponse,
     UploadStats,
 )
-from aqstudio.web.body import extract_text
+from aqstudio.web.body import extract_labels
 from aqstudio.web.deps import Deps, get_deps
 from aqstudio.web.errors import ApiError
 from aqstudio.web.security import client_ip
@@ -60,15 +61,31 @@ async def create_upload(
     if not decision.allowed:
         raise ApiError(429, "rate_limited", decision.reason)
     deps.db.purge_expired(time.time())
-    text = await extract_text(request)
+    text, labels = await extract_labels(request)
     fmt = detect_format(text)
+    warnings: list[str] = []
     if fmt == DetectedFormat.WIDE_GRID:
-        raise ApiError(
-            422,
-            "unsupported_format",
-            "This looks like a wide hourly grid, which has no pollutant or station labels. "
-            "Wide-grid input is not supported yet; use a long-format CSV.",
+        if labels is None:
+            raise ApiError(
+                422,
+                "labels_required",
+                "This is a wide hourly grid with no station or pollutant labels. Tell us the "
+                "station, pollutant and unit it measures; nothing is guessed.",
+                {"needs": ["station", "pollutant", "unit"]},
+            )
+        try:
+            grid, skipped = wide_to_long(text, labels)
+        except IngestError as exc:
+            raise ApiError(422, exc.code, str(exc)) from exc
+        text = table_to_csv(grid)
+        warnings.append(
+            f"Wide grid converted for {labels.station} ({labels.pollutant}, {labels.unit}). "
+            "Grid hours are read as IST clock hours."
         )
+        if skipped:
+            warnings.append(
+                f"{skipped} day row(s) with impossible dates (e.g. 30 February) were skipped."
+            )
     if fmt == DetectedFormat.UNKNOWN:
         raise ApiError(
             422,
@@ -86,10 +103,9 @@ async def create_upload(
         stats, early_flags = await run_in_threadpool(_analyse, table, mapping, assumptions)
     except IngestError as exc:
         raise ApiError(422, exc.code, str(exc)) from exc
-    warnings = (
-        [] if any(m.meaning == "pollutant" for m in mapping) else ["No pollutant columns found."]
-    )
-    upload_id = deps.uploads.create(fmt.value, text)
+    if not any(m.meaning == "pollutant" for m in mapping):
+        warnings.append("No pollutant columns found.")
+    upload_id = deps.uploads.create(fmt.value, text)  # wide grids are stored converted
     return UploadResponse(
         upload_id=upload_id,
         detected_format=fmt.value,

@@ -3,19 +3,23 @@
 import json
 
 from fastapi import Request
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from starlette.datastructures import UploadFile
 
-from aqstudio.config import MAX_UPLOAD_BYTES
+from aqstudio.config import MAX_ID_CHARS, MAX_POLLUTANT_CHARS, MAX_UPLOAD_BYTES
+from aqstudio.ingest.parse_wide import WideLabels
 from aqstudio.web.errors import ApiError
 
 _ALLOWED_SUFFIXES = (".csv", ".txt")
 
 
 class UploadTextBody(BaseModel):
-    """JSON upload body: pasted text."""
+    """JSON upload body: pasted text, plus labels for a wide grid."""
 
     text: str
+    station: str | None = Field(default=None, max_length=MAX_ID_CHARS)
+    pollutant: str | None = Field(default=None, max_length=MAX_POLLUTANT_CHARS)
+    unit: str | None = Field(default=None, max_length=16)
 
 
 async def _read_capped(request: Request) -> bytes:
@@ -65,3 +69,29 @@ async def extract_text(request: Request) -> str:
         raise ApiError(
             422, "invalid_request", "Send multipart 'file' or JSON {\"text\": ...}."
         ) from None
+
+
+def _labels(station: object, pollutant: object, unit: object) -> WideLabels | None:
+    """Wide-grid labels when all three are given as non-empty text."""
+    parts = [str(v).strip() if isinstance(v, str) else "" for v in (station, pollutant, unit)]
+    if not all(parts):
+        return None
+    if len(parts[0]) > MAX_ID_CHARS or len(parts[1]) > MAX_POLLUTANT_CHARS or len(parts[2]) > 16:
+        raise ApiError(422, "invalid_request", "Station, pollutant or unit label is too long.")
+    return WideLabels(*parts)
+
+
+async def extract_labels(request: Request) -> tuple[str, WideLabels | None]:
+    """Upload text plus optional wide-grid labels, from multipart fields or the JSON body."""
+    if request.headers.get("content-type", "").startswith("multipart/form-data"):
+        form = await request.form()
+        labels = _labels(form.get("station"), form.get("pollutant"), form.get("unit"))
+        return await extract_text(request), labels
+    body = await _read_capped(request)
+    try:
+        parsed = UploadTextBody.model_validate(json.loads(body))
+    except (ValueError, ValidationError):
+        raise ApiError(
+            422, "invalid_request", "Send multipart 'file' or JSON {\"text\": ...}."
+        ) from None
+    return parsed.text, _labels(parsed.station, parsed.pollutant, parsed.unit)

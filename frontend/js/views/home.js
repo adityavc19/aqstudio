@@ -27,34 +27,35 @@ export function homeView() {
   });
   tabs.select("paste");
 
-  const form = h("form", {
-    onsubmit: async (e) => {
-      e.preventDefault();
-      errors.replaceChildren();
-      const options = { method: "POST" };
-      if (tab === "upload") {
-        if (!file) return errors.append(errorBox("Choose a file first."));
-        options.body = new FormData();
-        options.body.append("file", file);
-      } else {
-        if (!textarea.value.trim()) return errors.append(errorBox("Paste some data first, or load the sample."));
-        options.headers = { "Content-Type": "application/json" };
-        options.body = JSON.stringify({ text: textarea.value });
-      }
-      submit.disabled = true;
-      status.textContent = "Checking your data…";
-      try {
-        const upload = await api("/uploads", options);
-        sessionStorage.setItem(`aq.upload.${upload.upload_id}`, JSON.stringify(upload));
-        location.hash = `#/review/${upload.upload_id}`;
-      } catch (err) {
-        errors.append(errorBox(err.message, err.code));
-      } finally {
-        submit.disabled = false;
-        status.textContent = "";
-      }
-    },
-  }, tabs.list, panels.paste, panels.upload, panels.sample, errors, h("div", { class: "actions" }, submit), status);
+  async function send(labels) {
+    errors.replaceChildren();
+    const options = { method: "POST" };
+    if (tab === "upload") {
+      if (!file) return errors.append(errorBox("Choose a file first."));
+      options.body = new FormData();
+      options.body.append("file", file);
+      if (labels) Object.entries(labels).forEach(([k, v]) => options.body.append(k, v));
+    } else {
+      if (!textarea.value.trim()) return errors.append(errorBox("Paste some data first, or load the sample."));
+      options.headers = { "Content-Type": "application/json" };
+      options.body = JSON.stringify({ text: textarea.value, ...(labels || {}) });
+    }
+    submit.disabled = true;
+    status.textContent = "Checking your data…";
+    try {
+      const upload = await api("/uploads", options);
+      sessionStorage.setItem(`aq.upload.${upload.upload_id}`, JSON.stringify(upload));
+      location.hash = `#/review/${upload.upload_id}`;
+    } catch (err) {
+      errors.append(err.code === "labels_required" ? labelsForm(err.message, send) : errorBox(err.message, err.code));
+    } finally {
+      submit.disabled = false;
+      status.textContent = "";
+    }
+  }
+
+  const form = h("form", { onsubmit: (e) => { e.preventDefault(); send(null); } },
+    tabs.list, panels.paste, panels.upload, panels.sample, errors, h("div", { class: "actions" }, submit), status);
 
   const shareInput = h("input", { type: "text", id: "share-link", "aria-describedby": "share-help", placeholder: "https://…/#/c/…" });
   const citizen = h("section", { class: "card soft", "aria-labelledby": "cit-h" },
@@ -89,4 +90,25 @@ async function loadRecent(section) {
   } catch (err) {
     section.replaceChildren(heading, errorBox(`Could not load recent briefs. ${err.message}`));
   }
+}
+
+function labelsForm(message, send) {
+  // A wide hourly grid has no labels; ask rather than guess what it measures.
+  const station = h("input", { type: "text", id: "lbl-station", maxlength: "64", required: true });
+  const pollutant = h("select", { id: "lbl-pollutant" }, ["PM2.5", "PM10", "NO2", "SO2", "O3", "CO", "NH3"].map((p) => h("option", { value: p }, p)));
+  const unit = h("select", { id: "lbl-unit" }, ["ug/m3", "mg/m3", "ppb", "ppm"].map((u) => h("option", { value: u }, u)));
+  const go = h("button", { type: "button", onclick: () => {
+    if (!station.value.trim()) return station.focus();
+    send({ station: station.value.trim(), pollutant: pollutant.value, unit: unit.value });
+  } }, "Convert grid and continue");
+  const box = h("fieldset", { class: "needs-approval", role: "group", "aria-labelledby": "lbl-legend" },
+    h("legend", { id: "lbl-legend" }, "This looks like a wide hourly grid"),
+    h("p", { class: "small" }, message, " Grid hours are read as IST clock hours."),
+    h("div", { class: "grid controls" },
+      h("div", {}, h("label", { for: "lbl-station" }, "Station name"), station),
+      h("div", {}, h("label", { for: "lbl-pollutant" }, "Pollutant"), pollutant),
+      h("div", {}, h("label", { for: "lbl-unit" }, "Unit"), unit)),
+    h("div", { class: "actions" }, go));
+  setTimeout(() => station.focus(), 0);
+  return box;
 }
