@@ -94,12 +94,14 @@ def approved_conversions(
             continue
         column = a.proposed["column"]
         for m in mapping:
-            if m.column == column and m.meaning == "pollutant" and m.pollutant and m.unit:
-                conversion = conversion_for(
-                    canonical_pollutant(m.pollutant), normalize_unit(m.unit)
-                )
-                if conversion is not None:
-                    approved[column] = conversion
+            if m.column != column or m.meaning != "pollutant" or not m.pollutant or not m.unit:
+                continue
+            unit = normalize_unit(m.unit)
+            if unit != a.proposed.get("from_unit"):
+                continue  # the user changed the unit after approving: the approval no longer fits
+            conversion = conversion_for(canonical_pollutant(m.pollutant), unit)
+            if conversion is not None:
+                approved[column] = conversion
     return approved
 
 

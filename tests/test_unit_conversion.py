@@ -86,3 +86,25 @@ def test_upload_reports_stats_and_early_flags_before_any_brief(settings: Setting
         "/api/uploads", json={"text": "Station ID,Timestamp,PM2.5\nS1,nonsense,1\n" * 1}
     )
     assert bad.status_code == 422 and bad.json()["error"]["code"] == "invalid_timestamps"
+
+
+def test_user_mapping_overrides_and_stale_approval_is_not_applied(settings: Settings) -> None:
+    client = TestClient(create_app(settings, FakeLLM()))
+    upload = client.post("/api/uploads", json={"text": _csv("mg/m3")}).json()
+    pid = next(a["id"] for a in upload["assumptions"] if a["kind"] == "unit_conversion")
+    mapping = upload["mapping"]
+    for m in mapping:
+        if m["column"] == "NO2 (mg/m3)":
+            m["unit"] = "ppb"  # the user corrects the unit after the approval was proposed
+    body = {
+        "upload_id": upload["upload_id"],
+        "persona": "school",
+        "assumptions": [{"id": pid, "status": "confirmed"}],
+        "mapping": mapping,
+    }
+    brief_id = client.post("/api/briefs", json=body).json()["brief_id"]
+    brief = client.get(f"/api/briefs/{brief_id}").json()["brief"]
+    assert "convert_unit" not in brief["ledger_summary"]  # approval was for mg/m3, not ppb
+    bad = dict(body, mapping=[dict(m, meaning="ignore") for m in mapping])
+    resp = client.post("/api/briefs", json=bad)
+    assert resp.status_code == 422 and resp.json()["error"]["code"] == "invalid_mapping"

@@ -23,6 +23,7 @@ export function reviewView(uploadId) {
       h("label", { class: "choice" }, h("input", { type: "radio", name, value: "confirm", checked: a.default_applied }), a.confirm_label),
       h("label", { class: "choice" }, h("input", { type: "radio", name, value: "alternative", checked: !a.default_applied }), a.alternative_label)));
   });
+  const mappingEditor = editableMapping(upload.mapping);
   const context = h("input", { type: "text", id: "context", maxlength: "1000", "aria-describedby": "context-help" });
   const previous = h("select", { id: "previous" }, h("option", { value: "" }, "No comparison"));
   api("/briefs").then((items) => items.filter((i) => i.status_line).forEach((i) => previous.append(h("option", { value: i.id }, `${i.label}: ${i.status_line}`)))).catch(() => {});
@@ -40,6 +41,7 @@ export function reviewView(uploadId) {
           persona: document.querySelector('input[name="persona"]:checked').value,
           context: context.value.trim() || null,
           assumptions: Object.entries(readers).map(([id, read]) => ({ id, status: read() })),
+          mapping: mappingEditor.changed() ? mappingEditor.read() : null,
           previous_brief_id: previous.value || null,
         });
         location.hash = `#/brief/${accepted.brief_id}`;
@@ -76,7 +78,36 @@ export function reviewView(uploadId) {
       h("section", { class: "card", "aria-labelledby": "as-h" }, h("h2", { id: "as-h" }, "Assumptions to confirm"), assumptionItems.length ? h("ul", { class: "plain" }, assumptionItems) : h("p", { class: "muted" }, "No assumptions needed.")),
       h("section", { class: "card", "aria-labelledby": "ef-h" }, h("h2", { id: "ef-h" }, "Early flags"),
         flags.length ? h("ul", { class: "plain" }, flags.map((f) => h("li", {}, h("span", { class: `sev sev-${f.severity}` }, f.severity), ` ${f.station_id}${f.pollutant ? ` · ${f.pollutant}` : ""}: `, f.detail))) : h("p", { class: "muted" }, "No data-quality problems found."))),
-    h("details", { class: "card" }, h("summary", {}, "Column mapping"),
-      table("How each column is read", ["Column", "Meaning", "Unit"], upload.mapping.map((m) => [m.column, m.meaning === "pollutant" ? `pollutant: ${m.pollutant}` : words(m.meaning), m.unit || (m.meaning === "pollutant" ? "not stated" : "")]))),
+    h("details", { class: "card" }, h("summary", {}, "Column mapping (you can correct it)"),
+      h("p", { class: "muted small" }, "Fix how a column is read instead of editing your file. The server checks the result: exactly one station and one timestamp column, and at least one pollutant."),
+      mappingEditor.node),
     form);
+}
+
+const MEANINGS = ["station_id", "timestamp", "station_name", "latitude", "longitude", "pollutant", "ignore"];
+
+function editableMapping(mapping) {
+  // One row per column: a meaning select, plus pollutant name and unit when it is a pollutant.
+  const rows = mapping.map((m, i) => {
+    const meaning = h("select", { id: `map-m-${i}`, "aria-label": `Meaning of column ${m.column}` }, MEANINGS.map((v) => h("option", { value: v, selected: v === m.meaning }, words(v))));
+    const pollutant = h("input", { type: "text", maxlength: "32", value: m.pollutant || "", "aria-label": `Pollutant name for ${m.column}` });
+    const unit = h("input", { type: "text", maxlength: "16", value: m.unit || "", placeholder: "e.g. ug/m3", "aria-label": `Unit for ${m.column}` });
+    const sync = () => {
+      const isPollutant = meaning.value === "pollutant";
+      pollutant.disabled = !isPollutant;
+      unit.disabled = !isPollutant;
+    };
+    meaning.addEventListener("change", sync);
+    sync();
+    return { m, meaning, pollutant, unit, cells: [m.column, meaning, pollutant, unit] };
+  });
+  const read = () => rows.map(({ m, meaning, pollutant, unit }) => ({
+    column: m.column,
+    meaning: meaning.value,
+    pollutant: meaning.value === "pollutant" ? pollutant.value.trim() || null : null,
+    unit: meaning.value === "pollutant" ? unit.value.trim() || null : null,
+    confidence: 1.0,
+  }));
+  const changed = () => rows.some(({ m, meaning, pollutant, unit }) => meaning.value !== m.meaning || (meaning.value === "pollutant" && (pollutant.value.trim() !== (m.pollutant || "") || unit.value.trim() !== (m.unit || ""))));
+  return { node: table("How each column is read", ["Column", "Meaning", "Pollutant", "Unit"], rows.map((r) => r.cells)), read, changed };
 }
