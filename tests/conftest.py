@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from aqstudio.config import Settings
-from aqstudio.schemas import ClaimDraft, Fact, Persona, QuotedValue
+from aqstudio.schemas import ActionDraft, ClaimDraft, Fact, Persona, QuotedValue
 
 
 @pytest.fixture
@@ -33,6 +33,28 @@ class FakeLLM:
             ClaimDraft(text="Grounded", fact_ids=[first.id], confidence=0.8, quoted_values=[quote]),
             ClaimDraft(text="Invented", fact_ids=["F999"], confidence=0.9),
         ]
+
+    def rank_actions(
+        self, facts: list[Fact], persona: Persona, context: str | None
+    ) -> list[ActionDraft]:
+        good = next(f for f in facts if "mean" in f.values)
+        return [_action([good.id]), _action(["F999"])]
+
+
+def _action(fact_ids: list[str], tier: str = "now", effect: str = "exposure") -> ActionDraft:
+    return ActionDraft.model_validate(
+        {
+            "tier": tier,
+            "effect_type": effect,
+            "text": "Do a thing",
+            "steps": ["step"],
+            "owner": "ward officer",
+            "horizon": "today",
+            "success_signal": "done",
+            "fact_ids": fact_ids,
+            "confidence": 0.7,
+        }
+    )
 
 
 def hourly_csv(base: int = 30, hours: int = 24, day: int = 1) -> str:

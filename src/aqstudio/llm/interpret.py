@@ -3,7 +3,7 @@
 import json
 from collections.abc import Callable
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from aqstudio.llm.client import LLMError
 from aqstudio.schemas import ClaimDraft, Fact, InterpretationOutput, Persona
@@ -20,17 +20,24 @@ def build_user_prompt(facts: list[Fact], persona: Persona, context: str | None) 
     return prompt
 
 
-def interpret_with_retry(prompt: str, call_model: Callable[[str], object]) -> list[ClaimDraft]:
+def structured_with_retry[M: BaseModel](
+    prompt: str, call_model: Callable[[str], object], schema: type[M]
+) -> M:
     """Validate the model's output; on failure retry once with the error, then raise LLMError."""
     attempt_prompt = prompt
     for attempt in range(2):
         raw = call_model(attempt_prompt)
         try:
             if isinstance(raw, str):
-                return InterpretationOutput.model_validate_json(raw).claims
-            return InterpretationOutput.model_validate(raw).claims
+                return schema.model_validate_json(raw)
+            return schema.model_validate(raw)
         except ValidationError as exc:
             if attempt == 1:
                 break
             attempt_prompt = f"{prompt}\nYour last output was invalid: {exc}\nReturn valid output."
     raise LLMError("The model returned output that failed validation twice.")
+
+
+def interpret_with_retry(prompt: str, call_model: Callable[[str], object]) -> list[ClaimDraft]:
+    """Claims from the model, validated with one retry."""
+    return structured_with_retry(prompt, call_model, InterpretationOutput).claims

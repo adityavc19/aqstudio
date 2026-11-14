@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from aqstudio.schemas import ClaimDraft, Fact, Persona
+from aqstudio.schemas import ActionDraft, ClaimDraft, Fact, Persona
 
 
 class LLMError(RuntimeError):
@@ -16,4 +16,10 @@ class LLMClient(Protocol):
         self, facts: list[Fact], persona: Persona, context: str | None
     ) -> list[ClaimDraft]:
         """Return claims, each citing fact ids."""
+        ...
+
+    def rank_actions(
+        self, facts: list[Fact], persona: Persona, context: str | None
+    ) -> list[ActionDraft]:
+        """Return persona-specific actions, each citing fact ids."""
         ...

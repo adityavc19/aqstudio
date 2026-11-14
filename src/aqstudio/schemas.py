@@ -256,6 +256,27 @@ class BriefSummary(BaseModel):
     unreliable_count: int
 
 
+class ActionDraft(BaseModel):
+    """An action as returned by the LLM, before verification."""
+
+    tier: ActionTier
+    effect_type: EffectType
+    text: str
+    steps: list[str]
+    owner: str
+    escalate_to: str | None = None
+    horizon: Horizon
+    success_signal: str
+    fact_ids: list[str]
+    confidence: float = Field(ge=0, le=1)
+
+
+class ActionsOutput(BaseModel):
+    """Schema the LLM must return for actions."""
+
+    actions: list[ActionDraft]
+
+
 class Brief(BaseModel):
     """A complete stored briefing."""
 

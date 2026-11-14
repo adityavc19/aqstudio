@@ -3,9 +3,12 @@
 import anthropic
 
 from aqstudio.llm.client import LLMError
-from aqstudio.llm.interpret import build_user_prompt, interpret_with_retry
+from aqstudio.llm.interpret import build_user_prompt, interpret_with_retry, structured_with_retry
+from aqstudio.llm.prompts.actions import SYSTEM as ACTIONS_SYSTEM
 from aqstudio.llm.prompts.interpret import SYSTEM
 from aqstudio.schemas import (
+    ActionDraft,
+    ActionsOutput,
     ClaimDraft,
     Fact,
     InterpretationOutput,
@@ -30,19 +33,32 @@ class AnthropicClient:
         prompt = build_user_prompt(facts, persona, context)
         return interpret_with_retry(prompt, self._call)
 
-    def _call(self, prompt: str) -> object:
+    def rank_actions(
+        self, facts: list[Fact], persona: Persona, context: str | None
+    ) -> list[ActionDraft]:
+        """Ask Claude for persona-specific actions citing facts."""
+        prompt = build_user_prompt(facts, persona, context)
+        call = lambda p: self._call(p, ACTIONS_SYSTEM, ActionsOutput)  # noqa: E731
+        return structured_with_retry(prompt, call, ActionsOutput).actions
+
+    def _call(
+        self,
+        prompt: str,
+        system: str = SYSTEM,
+        schema: type[InterpretationOutput] | type[ActionsOutput] = InterpretationOutput,
+    ) -> object:
         """Make one forced tool call and return the tool input."""
         try:
             response = self._client.messages.create(
                 model=self._model,
                 max_tokens=3000,
-                system=f"{SYSTEM} Report only via the {_TOOL} tool.",
+                system=f"{system} Report only via the {_TOOL} tool.",
                 messages=[{"role": "user", "content": prompt}],
                 tools=[
                     {
                         "name": _TOOL,
                         "description": "Report cited claims about the facts.",
-                        "input_schema": InterpretationOutput.model_json_schema(),
+                        "input_schema": schema.model_json_schema(),
                     }
                 ],
                 tool_choice={"type": "tool", "name": _TOOL},

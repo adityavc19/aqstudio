@@ -7,9 +7,12 @@ import httpx
 
 from aqstudio.config import SARVAM_BASE_URL, SARVAM_MAX_TOKENS, SARVAM_TIMEOUT_S
 from aqstudio.llm.client import LLMError
-from aqstudio.llm.interpret import build_user_prompt, interpret_with_retry
+from aqstudio.llm.interpret import build_user_prompt, interpret_with_retry, structured_with_retry
+from aqstudio.llm.prompts.actions import SYSTEM as ACTIONS_SYSTEM
 from aqstudio.llm.prompts.interpret import SYSTEM
 from aqstudio.schemas import (
+    ActionDraft,
+    ActionsOutput,
     ClaimDraft,
     Fact,
     InterpretationOutput,
@@ -45,6 +48,14 @@ class SarvamClient:
         prompt = build_user_prompt(facts, persona, context)
         return interpret_with_retry(prompt, self._call)
 
+    def rank_actions(
+        self, facts: list[Fact], persona: Persona, context: str | None
+    ) -> list[ActionDraft]:
+        """Ask the model for persona-specific actions citing facts."""
+        prompt = build_user_prompt(facts, persona, context)
+        call = lambda p: self._call(p, ACTIONS_SYSTEM, ActionsOutput)  # noqa: E731
+        return structured_with_retry(prompt, call, ActionsOutput).actions
+
     def _post_with_retry(self, body: dict[str, object]) -> httpx.Response:
         """POST with exponential backoff on rate limits, overload and network errors."""
         for attempt in range(_ATTEMPTS):
@@ -66,7 +77,12 @@ class SarvamClient:
             self._sleep(2.0**attempt)
         raise LLMError("The AI service request failed.")  # unreachable: the last attempt returns
 
-    def _call(self, prompt: str) -> object:
+    def _call(
+        self,
+        prompt: str,
+        system: str = SYSTEM,
+        schema: type[InterpretationOutput] | type[ActionsOutput] = InterpretationOutput,
+    ) -> object:
         """One chat completion; returns the raw JSON text for validation."""
         body: dict[str, object] = {
             "model": self._model,
@@ -78,8 +94,8 @@ class SarvamClient:
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": "claims",
-                    "schema": InterpretationOutput.model_json_schema(),
+                    "name": "output",
+                    "schema": schema.model_json_schema(),
                     "strict": True,
                 },
             },

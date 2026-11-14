@@ -28,8 +28,9 @@ const STEPS = [
   "Calculate facts",
   "Write the brief",
   "Check every claim",
+  "Plan actions for you",
 ];
-const STAGES = ["queued", "cleaning", "quality", "facts", "interpreting", "verifying"];
+const STAGES = ["queued", "cleaning", "quality", "facts", "interpreting", "verifying", "actions"];
 const LEAFLET = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/";
 const LEAFLET_SRI = {
   "leaflet.min.js": "sha384-NElt3Op+9NBMCYaef5HxeJmU4Xeard/Lku8ek6hoPTvYkQPh3zLIrJP7KiRocsxO",
@@ -434,9 +435,9 @@ function stepList(index) {
 function processingView(stage) {
   const index = Math.max(0, STAGES.indexOf(stage));
   const holder = h("div");
-  holder.append(h("progress", { max: "6", value: String(index), "aria-label": "Brief progress" }), stepList(index));
+  holder.append(h("progress", { max: String(STEPS.length), value: String(index), "aria-label": "Brief progress" }), stepList(index));
   show("Building your brief", h("h1", {}, "Building your brief"), h("p", { class: "lede" }, "Usually under a minute. You can leave this page; the brief appears in Recent briefs."), h("p", { class: "muted" }, "Numbers are calculated by code. The AI only writes the explanation, and every sentence is checked against the calculated facts."), holder);
-  announce(`Step ${index + 1} of 6: ${STEPS[index]}`);
+  announce(`Step ${index + 1} of ${STEPS.length}: ${STEPS[index]}`);
 }
 
 async function briefView(id, against) {
@@ -489,6 +490,30 @@ function claimsSection(brief) {
     ),
   );
   return section("What happened", true, h("p", { class: "muted small" }, `${checked} of ${brief.claims.length} sentences checked against the calculated facts. Unverified sentences are shown and marked, never hidden.`), list.length ? list : h("p", { class: "muted" }, "The AI returned no claims."));
+}
+
+const TIER = { now: "Do now", escalate: "Escalate", context: "Good to know" };
+const EFFECT = { exposure: "Protects people", source: "Reduces pollution", evidence: "Improves the data" };
+
+function actionsSection(brief) {
+  if (!brief.actions.length) {
+    return section("What to do", true, h("p", { class: "muted" }, "No actions passed the checks for this brief, so none are shown."));
+  }
+  return section(
+    "What to do",
+    true,
+    h("p", { class: "muted small" }, `Actions for: ${PERSONAS[brief.persona] || brief.persona}. Each one cites the facts it relies on; actions resting on unreliable data are turned into data checks.`),
+    brief.actions.map((a) =>
+      h("div", { class: "claim" },
+        h("div", { class: "chips" }, h("span", { class: "badge c-na" }, TIER[a.tier] || a.tier), h("span", { class: "badge c-na" }, EFFECT[a.effect_type] || a.effect_type), h("span", { class: "small muted" }, words(a.horizon))),
+        h("p", {}, h("b", {}, a.text)),
+        a.gated_reason ? h("p", { class: "note" }, `⚠ ${a.gated_reason}`) : null,
+        h("ol", { class: "small" }, a.steps.map((step) => h("li", {}, step))),
+        h("p", { class: "small" }, `Owner: ${a.owner}${a.escalate_to ? ` · Escalate to: ${a.escalate_to}` : ""} · Success looks like: ${a.success_signal}`),
+        h("div", { class: "chips" }, "Evidence:", a.fact_ids.map((fid) => h("button", { type: "button", class: "secondary fact-chip", onclick: () => openEvidence(brief.id, fid), "aria-label": `Show evidence ${fid}` }, fid))),
+      ),
+    ),
+  );
 }
 
 function section(title, open, ...nodes) {
@@ -631,6 +656,7 @@ function renderBrief(brief, against) {
     h("div", { class: "chips" }, Object.entries(counts).map(([category, n]) => h("span", {}, categoryBadge(category), ` ${n}`))),
     unsure.length ? h("p", { class: "note" }, h("b", {}, "Unsure about: "), unsure.join("; "), ".") : null,
     claimsSection(brief),
+    actionsSection(brief),
     where,
     qualitySection(brief),
     h("div", { class: "actions" }, h("a", { class: "btn secondary", href: "#/" }, "Add more data")),

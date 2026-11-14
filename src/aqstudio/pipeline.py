@@ -12,7 +12,7 @@ from aqstudio.config import LEDGER_SAMPLE_SIZE, MAX_FACTS_TO_LLM
 from aqstudio.facts.build_facts import assign_fact_ids, build_facts
 from aqstudio.facts.derived import flag_facts, reliability_facts
 from aqstudio.ingest.errors import IngestError
-from aqstudio.llm.client import LLMClient
+from aqstudio.llm.client import LLMClient, LLMError
 from aqstudio.quality.coords import coordinate_flags
 from aqstudio.quality.detectors import assign_flag_ids, detect_all
 from aqstudio.quality.reliability import station_reliability
@@ -28,6 +28,7 @@ from aqstudio.schemas import (
     RawTable,
 )
 from aqstudio.summary import station_infos, summarize
+from aqstudio.verify.actions import verify_actions
 from aqstudio.verify.claims import verify_claims
 
 _CADENCE_ASSUMPTION = Assumption(
@@ -115,6 +116,12 @@ def build_brief(
     drafts = llm.interpret_facts(sent, persona, context)
     on_stage("verifying")
     claims = verify_claims(drafts, facts)
+    on_stage("actions")
+    try:
+        actions = verify_actions(llm.rank_actions(sent, persona, context), facts, persona)
+    except LLMError as exc:
+        actions = []
+        notes.append(f"Actions could not be generated ({exc}); the rest of the brief is complete.")
     infos = station_infos(locations, facts, reliability)
     brief = Brief(
         id=brief_id or uuid.uuid4().hex,
@@ -124,7 +131,7 @@ def build_brief(
         context=context,
         facts=facts,
         claims=claims,
-        actions=[],
+        actions=actions,
         flags=flags,
         reliability=reliability,
         ledger_summary=dict(Counter(e.rule for e in cleaned.ledger)),
