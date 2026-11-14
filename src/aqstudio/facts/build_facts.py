@@ -1,5 +1,7 @@
 """Deterministic facts: coverage-aware means, CPCB AQI, PM ratio hints and hotspots."""
 
+from dataclasses import dataclass, field
+
 import pandas as pd
 
 from aqstudio.config import (
@@ -12,8 +14,16 @@ from aqstudio.config import (
 )
 from aqstudio.facts.aqi import overall_aqi
 from aqstudio.facts.cadence import is_daily
+from aqstudio.facts.patterns import citywide_facts, diurnal_facts, hourly_grid, trend_facts
 from aqstudio.quality.reliability import grade_for
-from aqstudio.schemas import Fact, FlagKind, QualityFlag, Reading, ReliabilityGrade
+from aqstudio.schemas import (
+    Fact,
+    FlagKind,
+    QualityFlag,
+    Reading,
+    ReliabilityGrade,
+    StationHours,
+)
 
 _FAULT_KINDS = {FlagKind.CEILING, FlagKind.STUCK}
 _USABLE = {ReliabilityGrade.GOOD, ReliabilityGrade.FAIR}
@@ -23,6 +33,15 @@ _GRADE_ORDER = [
     ReliabilityGrade.FAIR,
     ReliabilityGrade.GOOD,
 ]
+
+
+@dataclass(frozen=True)
+class FactsResult:
+    """Facts (ids unassigned), whether data is daily, and the hourly grid for the UI."""
+
+    facts: list[Fact]
+    daily_cadence: bool
+    hourly: list[StationHours] = field(default_factory=list)
 
 
 def assign_fact_ids(facts: list[Fact]) -> list[Fact]:
@@ -113,15 +132,15 @@ def _flag_ids(flags: list[QualityFlag], station: str, pollutant: str | None) -> 
     ]
 
 
-def build_facts(readings: list[Reading], flags: list[QualityFlag]) -> tuple[list[Fact], bool]:
-    """Coverage-aware facts (ids unassigned) and whether the data is daily-cadence."""
+def build_facts(readings: list[Reading], flags: list[QualityFlag]) -> FactsResult:
+    """Coverage-aware facts, patterns and the hourly grid."""
     if not readings:
-        return [], False
+        return FactsResult([], False)
     everything = _all_rows(readings)
     start, end = everything["ts"].min(), everything["ts"].max()
     valid = _valid_rows(everything, flags)
     if valid.empty:
-        return [], False
+        return FactsResult([], False)
     daily_cadence = is_daily(valid)
     freq, noun = ("D", "days") if daily_cadence else ("h", "hours")
     expected = (
@@ -162,7 +181,18 @@ def build_facts(readings: list[Reading], flags: list[QualityFlag]) -> tuple[list
         facts.extend(_aqi_facts(station_s, period, daily, refs, flags, expected_days))
         facts.extend(_ratio_fact(station_s, period, means.get(station_s, {})))
     facts.extend(_hotspot_fact(means))
-    return facts, daily_cadence
+    if daily_cadence:
+        return FactsResult(facts, True)
+    mean_coverage = {
+        (f.station_id or "", str(f.values["pollutant"])): f.coverage_pct
+        for f in facts
+        if f.kind == "pollutant_mean"
+    }
+    trends = trend_facts(daily, period, expected_days)
+    facts.extend(diurnal_facts(slots, period, mean_coverage))
+    facts.extend(trends)
+    facts.extend(citywide_facts(trends))
+    return FactsResult(facts, False, hourly_grid(slots, end))
 
 
 def _aqi_facts(

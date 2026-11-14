@@ -40,6 +40,9 @@ _CADENCE_ASSUMPTION = Assumption(
 )
 _PRIORITY = [
     "hotspot",
+    "citywide_pattern",
+    "trend",
+    "diurnal",
     "station_reliability",
     "aqi_latest",
     "aqi_worst",
@@ -97,7 +100,8 @@ def build_brief(
     locations = extract_stations(table, mapping, swap_station_ids)
     flags = assign_flag_ids([*detect_all(cleaned.readings), *coordinate_flags(locations)])
     on_stage("facts")
-    base_facts, daily_cadence = build_facts(cleaned.readings, flags)
+    built = build_facts(cleaned.readings, flags)
+    base_facts, daily_cadence = built.facts, built.daily_cadence
     if not base_facts:
         raise IngestError(
             "No usable readings remain after cleaning, so there is nothing to brief.", "no_data"
@@ -138,6 +142,7 @@ def build_brief(
         ledger=cleaned.ledger[:LEDGER_SAMPLE_SIZE],
         assumptions=assumptions,
         stations=infos,
+        hourly=built.hourly,
         notes=notes,
         coordinates_source=(
             CoordinatesSource.UPLOADED

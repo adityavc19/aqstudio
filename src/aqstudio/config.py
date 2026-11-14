@@ -44,6 +44,18 @@ STUCK_MIN_RUN = 4
 STUCK_MIN_HOURS = 8.0
 ZERO_RUN_OK = frozenset({"RF", "TOT-RF", "RAINFALL"})  # constant zero is normal for rain gauges.
 DAILY_CADENCE_MIN_HOURS = 20.0  # median spacing at or above this means daily readings.
+AQI_COLUMNS = frozenset({"AQI"})  # a reported AQI column, checked against its inputs
+ZERO_FILL_MIN_READINGS = 6  # ASSUMPTION: zeros while everything else is missing, this many times.
+SCALE_HINTS = ("US AQI", "USAQI", "EPA")  # column names suggesting a non-CPCB AQI scale
+
+# Patterns. ASSUMPTION: minimum data before a pattern is reported, so hints are not noise.
+DIURNAL_MIN_DAYS = 2
+TREND_MIN_DAYS_PER_HALF = 3
+TREND_MIN_CHANGE_PCT = 10.0
+CITYWIDE_SHARE = 2 / 3  # share of stations moving together that suggests a regional driver
+PATTERN_POLLUTANTS = ("PM2.5", "PM10")
+HOURLY_GRID_HOURS = 24
+HOURLY_GRID_POLLUTANT = "PM2.5"
 GAP_MIN_HOURS = 24.0  # ASSUMPTION: silence between valid readings that counts as a gap.
 LAT_COLUMNS = frozenset({"latitude", "lat"})
 LON_COLUMNS = frozenset({"longitude", "lon", "lng"})

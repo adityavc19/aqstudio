@@ -24,8 +24,8 @@ def _run(text: str, day_first: bool | None = None):  # type: ignore[no-untyped-d
     mapping, _ = propose_mapping(table)
     cleaned = clean_long(table, mapping, False, day_first)
     flags = detect_all(cleaned.readings)
-    facts, daily = build_facts(cleaned.readings, flags)
-    return cleaned, flags, facts, daily
+    built = build_facts(cleaned.readings, flags)
+    return cleaned, flags, built.facts, built.daily_cadence
 
 
 def _rows(sid: str, day: int, hours: range, gap: str = "") -> str:

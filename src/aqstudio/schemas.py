@@ -28,6 +28,8 @@ class FlagKind(StrEnum):
     UNIT_MISMATCH = "unit_mismatch"
     ORPHAN_AQI = "orphan_aqi"
     STALE = "stale"
+    ZERO_FILLED = "zero_filled"
+    SCALE_MISMATCH = "scale_mismatch"
     NO_COORDS = "no_coords"
 
 
@@ -248,6 +250,22 @@ class StationInfo(BaseModel):
     reliability_grade: ReliabilityGrade
 
 
+class HourCell(BaseModel):
+    """One hour of one station in the heat-grid; band is an indicative PM2.5 category."""
+
+    ts: str
+    value: float | None
+    band: str | None
+
+
+class StationHours(BaseModel):
+    """The last hours of one station's readings for the heat-grid."""
+
+    station_id: str
+    pollutant: str
+    cells: list[HourCell]
+
+
 class BriefSummary(BaseModel):
     """Code-built summary stored with the brief's metadata for fast listing."""
 
@@ -295,6 +313,7 @@ class Brief(BaseModel):
     ledger: list[LedgerEntry] = Field(default_factory=list)
     assumptions: list[Assumption] = Field(default_factory=list)
     stations: list[StationInfo] = Field(default_factory=list)
+    hourly: list[StationHours] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
     coordinates_source: CoordinatesSource = CoordinatesSource.NONE
     status: BriefStatus

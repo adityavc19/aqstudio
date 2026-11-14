@@ -1,17 +1,24 @@
 """Data-quality detectors over tidy Readings."""
 
 from collections import defaultdict
+from datetime import date
 from itertools import groupby
 
 from aqstudio.config import (
+    AQI_BREAKPOINTS,
+    AQI_COLUMNS,
     CEILING_MIN_HOURS,
     CEILING_MIN_RUN,
     CEILING_SENTINEL,
     EXPECTED_UNITS,
     GAP_MIN_HOURS,
+    MIN_AQI_POLLUTANTS,
+    PARTICULATES,
     PLAUSIBLE_RANGES,
+    SCALE_HINTS,
     STUCK_MIN_HOURS,
     STUCK_MIN_RUN,
+    ZERO_FILL_MIN_READINGS,
     ZERO_RUN_OK,
 )
 from aqstudio.quality.units import conversion_for
@@ -186,6 +193,83 @@ def detect_unit_mismatch(readings: list[Reading]) -> list[QualityFlag]:
     ]
 
 
+def detect_orphan_aqi(readings: list[Reading]) -> list[QualityFlag]:
+    """Flag days where a reported AQI exists but CPCB's minimum inputs are missing."""
+    reported: dict[tuple[str, date], Reading] = {}
+    inputs: dict[tuple[str, date], set[str]] = defaultdict(set)
+    for r in readings:
+        if r.value is None:
+            continue
+        key = (r.station_id, r.ts.date())
+        if r.pollutant in AQI_COLUMNS:
+            reported.setdefault(key, r)
+        elif r.pollutant in AQI_BREAKPOINTS:
+            inputs[key].add(r.pollutant)
+    orphans: dict[str, list[Reading]] = defaultdict(list)
+    for key, aqi in reported.items():
+        present = inputs[key]
+        if len(present) < MIN_AQI_POLLUTANTS or not present & PARTICULATES:
+            orphans[key[0]].append(aqi)
+    return [
+        QualityFlag(
+            kind=FlagKind.ORPHAN_AQI,
+            station_id=station,
+            pollutant=refs[0].pollutant,
+            start=min(r.ts for r in refs),
+            end=max(r.ts for r in refs),
+            severity=Severity.WARN,
+            detail=f"A reported AQI appears on {len(refs)} day(s) although the pollutants "
+            "CPCB needs to compute it are missing. That AQI is not used.",
+            row_refs=[refs[0].row_ref],
+        )
+        for station, refs in orphans.items()
+    ]
+
+
+def detect_zero_filled(readings: list[Reading]) -> list[QualityFlag]:
+    """Flag channels like rainfall that read 0 while every other channel is missing."""
+    rows: dict[tuple[str, object], dict[str, Reading]] = defaultdict(dict)
+    for r in readings:
+        rows[(r.station_id, r.ts)][r.pollutant] = r
+    hits: dict[tuple[str, str], list[Reading]] = defaultdict(list)
+    for channels in rows.values():
+        for name, reading in channels.items():
+            others = [c for k, c in channels.items() if k != name]
+            if (
+                name in ZERO_RUN_OK
+                and reading.value == 0
+                and others
+                and all(c.value is None for c in others)
+            ):
+                hits[(reading.station_id, name)].append(reading)
+    return [
+        _flag(
+            FlagKind.ZERO_FILLED,
+            Severity.WARN,
+            f"{name} reads 0 at {len(run)} times when every other channel is missing; the "
+            "zeros probably fill a gap and are not real measurements.",
+            sorted(run, key=lambda r: r.ts),
+        )
+        for (_, name), run in hits.items()
+        if len(run) >= ZERO_FILL_MIN_READINGS
+    ]
+
+
+def detect_scale_mismatch(readings: list[Reading]) -> list[QualityFlag]:
+    """Flag columns whose names suggest a non-CPCB AQI scale; they are never mixed in."""
+    return [
+        _flag(
+            FlagKind.SCALE_MISMATCH,
+            Severity.WARN,
+            f"'{pollutant}' looks like a different AQI scale (e.g. US EPA). It is shown as "
+            "data only and never mixed with the CPCB AQI.",
+            items,
+        )
+        for (_, pollutant), items in _by_series(readings).items()
+        if any(hint in pollutant for hint in SCALE_HINTS)
+    ]
+
+
 def assign_flag_ids(flags: list[QualityFlag]) -> list[QualityFlag]:
     """Give flags sequential ids (Q1, Q2, ...) in list order."""
     return [f.model_copy(update={"id": f"Q{i}"}) for i, f in enumerate(flags, start=1)]
@@ -201,5 +285,8 @@ def detect_all(readings: list[Reading]) -> list[QualityFlag]:
             *detect_empty_columns(readings),
             *detect_implausible(readings),
             *detect_unit_mismatch(readings),
+            *detect_orphan_aqi(readings),
+            *detect_zero_filled(readings),
+            *detect_scale_mismatch(readings),
         ]
     )

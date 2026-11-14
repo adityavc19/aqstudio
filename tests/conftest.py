@@ -27,17 +27,21 @@ class FakeLLM:
     ) -> list[ClaimDraft]:
         self.calls += 1
         self.fact_counts.append(len(facts))
-        first = next(f for f in facts if "mean" in f.values)
-        quote = QuotedValue(fact_id=first.id, field="mean", value=float(first.values["mean"] or 0))
+        first = next((f for f in facts if "mean" in f.values), facts[0])
+        quotes = (
+            [QuotedValue(fact_id=first.id, field="mean", value=float(first.values["mean"] or 0))]
+            if "mean" in first.values
+            else []
+        )
         return [
-            ClaimDraft(text="Grounded", fact_ids=[first.id], confidence=0.8, quoted_values=[quote]),
+            ClaimDraft(text="Grounded", fact_ids=[first.id], confidence=0.8, quoted_values=quotes),
             ClaimDraft(text="Invented", fact_ids=["F999"], confidence=0.9),
         ]
 
     def rank_actions(
         self, facts: list[Fact], persona: Persona, context: str | None
     ) -> list[ActionDraft]:
-        good = next(f for f in facts if "mean" in f.values)
+        good = next((f for f in facts if "mean" in f.values), facts[0])
         return [_action([good.id]), _action(["F999"])]
 
     def write_advisory(self, facts: list[Fact], level: str) -> AdvisoryDraft:
