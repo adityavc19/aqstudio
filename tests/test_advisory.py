@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from aqstudio.advisory.compose import strip_fact_markers
 from aqstudio.advisory.translate import TranslationError, numbers_preserved
 from aqstudio.config import Settings
 from aqstudio.web.app import create_app
@@ -93,3 +94,9 @@ def test_render_rejects_unknown_language_and_missing_translator(settings: Settin
     assert bad.status_code == 422 and bad.json()["error"]["code"] == "unsupported_language"
     none = client.get(f"/api/briefs/{brief_id}/render", params={"language": "hi"})
     assert none.status_code == 503 and none.json()["error"]["code"] == "translation_unavailable"
+
+
+def test_internal_fact_markers_never_reach_citizen_text() -> None:
+    assert strip_fact_markers("AQI is 326 (Very Poor) [F12].") == "AQI is 326 (Very Poor)."
+    assert strip_fact_markers("Mean 42 (F3, F4) today") == "Mean 42 today"
+    assert strip_fact_markers("Use PM2.5 masks (N95)") == "Use PM2.5 masks (N95)"

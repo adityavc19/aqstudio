@@ -1,5 +1,7 @@
 """Build advisory and internal-note documents from a verified brief."""
 
+import re
+
 from aqstudio.advisory.translate import TranslationError, Translator, numbers_preserved
 from aqstudio.config import ADVISORY_DISCLAIMER, ADVISORY_LANGUAGES
 from aqstudio.schemas import (
@@ -11,6 +13,14 @@ from aqstudio.schemas import (
     RenderedSection,
 )
 from aqstudio.verify.claims import verify_claims
+
+_FACT_MARKERS = re.compile(r"\s*[\[(](?:F\d+[,;\s]*)+[\])]")
+
+
+def strip_fact_markers(text: str) -> str:
+    """Remove internal citation markers like "[F12]" or "(F3, F4)" from public text."""
+    return _FACT_MARKERS.sub("", text).strip()
+
 
 _ADVISORY_TITLES = {
     "headline": "Air quality advisory",
@@ -43,7 +53,7 @@ def advisory_sections(draft: AdvisoryDraft, brief: Brief) -> list[RenderedSectio
     """Advisory sections in English, each checked by the claim verifier."""
     sections: list[RenderedSection] = []
     for key in ("headline", "everyone", "children", "older_adults", "sensitive_groups"):
-        text = str(getattr(draft, key))
+        text = strip_fact_markers(str(getattr(draft, key)))
         [check] = verify_claims(
             [ClaimDraft(text=text, fact_ids=draft.fact_ids, confidence=draft.confidence)],
             brief.facts,

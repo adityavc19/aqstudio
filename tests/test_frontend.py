@@ -28,12 +28,18 @@ def test_frontend_is_served_at_root_and_api_still_works(tmp_path: Path) -> None:
         "script-src 'self' https://unpkg.com https://cdnjs.cloudflare.com"
         in page.headers["content-security-policy"]
     )
-    assert client.get("/app.js").status_code == 200 and client.get("/app.css").status_code == 200
+    assert (
+        client.get("/js/main.js").status_code == 200 and client.get("/app.css").status_code == 200
+    )
     assert client.get("/api/health").json()["status"] == "ok"
 
 
+def _scripts() -> str:
+    return "\n".join(p.read_text() for p in sorted((FRONTEND / "js").rglob("*.js")))
+
+
 def test_frontend_never_builds_html_from_strings_and_loads_only_pinned_hosts() -> None:
-    script = (FRONTEND / "app.js").read_text()
+    script = _scripts()
     for banned in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
         assert banned not in script
     hosts = set(re.findall(r"https?://([a-z0-9.\-]+)", script))
@@ -53,8 +59,19 @@ def test_every_api_route_the_frontend_calls_exists_in_the_contract(tmp_path: Pat
         "/api/briefs/{brief_id}/diff",
         "/api/briefs/{brief_id}/locations",
         "/api/briefs/{brief_id}/render",
+        "/api/briefs/{brief_id}/share",
+        "/api/share/{share_id}",
+        "/api/share/{share_id}/advisory",
     ):
         assert route in paths
-    script = (FRONTEND / "app.js").read_text()
-    for call in ("/uploads", "/briefs", "/evidence/", "/diff?against=", "/locations", "/render?"):
+    script = _scripts()
+    for call in (
+        "/uploads",
+        "/briefs",
+        "/evidence/",
+        "/diff?against=",
+        "/locations",
+        "/render?",
+        "/share",
+    ):
         assert call in script
