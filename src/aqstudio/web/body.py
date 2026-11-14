@@ -4,15 +4,17 @@ import json
 
 from fastapi import Request
 from pydantic import BaseModel, Field, ValidationError
+from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
 from aqstudio.config import MAX_ID_CHARS, MAX_POLLUTANT_CHARS, MAX_UPLOAD_BYTES
 from aqstudio.ingest.errors import IngestError
+from aqstudio.ingest.parse_pdf import pdf_to_csv
 from aqstudio.ingest.parse_wide import WideLabels
 from aqstudio.ingest.parse_xlsx import xlsx_to_csv
 from aqstudio.web.errors import ApiError
 
-_ALLOWED_SUFFIXES = (".csv", ".txt", ".xlsx")
+_ALLOWED_SUFFIXES = (".csv", ".txt", ".xlsx", ".pdf")
 
 
 class UploadTextBody(BaseModel):
@@ -59,14 +61,18 @@ async def extract_text(request: Request) -> str:
             raise ApiError(
                 415,
                 "unsupported_format",
-                "Only .csv, .txt or .xlsx files are accepted. PDF is not supported yet.",
+                "Only .csv, .txt, .xlsx or .pdf files are accepted.",
             )
         data = await file.read(MAX_UPLOAD_BYTES + 1)
         if len(data) > MAX_UPLOAD_BYTES:
             raise ApiError(413, "file_too_large", "Upload exceeds the maximum file size.")
-        if file.filename.lower().endswith(".xlsx"):
+        converter = {".xlsx": xlsx_to_csv, ".pdf": pdf_to_csv}.get(
+            "." + file.filename.lower().rsplit(".", 1)[-1]
+        )
+        if converter is not None:
             try:
-                return xlsx_to_csv(data)
+                # Parsing binary formats is CPU-bound: keep it off the event loop.
+                return await run_in_threadpool(converter, data)
             except IngestError as exc:
                 status = 413 if exc.code == "file_too_large" else 422
                 raise ApiError(status, exc.code, str(exc)) from exc

@@ -141,11 +141,20 @@ def detect_gaps(readings: list[Reading], series: _Series | None = None) -> list[
 def detect_empty_columns(
     readings: list[Reading], series: _Series | None = None
 ) -> list[QualityFlag]:
-    """Flag pollutants with no valid reading at all for a station."""
+    """Flag columns with no valid reading at any station (a station lacking a sensor is normal)."""
+    groups = series if series is not None else _by_series(readings)
+    by_pollutant: dict[str, list[list[Reading]]] = defaultdict(list)
+    for (_, pollutant), items in groups.items():
+        by_pollutant[pollutant].append(items)
     return [
-        _flag(FlagKind.EMPTY_COLUMN, Severity.INFO, "No valid readings in this column.", items)
-        for items in (series if series is not None else _by_series(readings)).values()
-        if all(r.value is None for r in items)
+        _flag(
+            FlagKind.EMPTY_COLUMN,
+            Severity.INFO,
+            "This column has no valid readings at all.",
+            lists[0],
+        )
+        for lists in by_pollutant.values()
+        if all(r.value is None for items in lists for r in items)
     ]
 
 
