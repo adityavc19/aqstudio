@@ -212,3 +212,9 @@ details.more > summary { cursor: pointer; color: var(--accent); font-weight: 600
 }
 .do-list .badge { justify-self: start; }
 .kpi-value, td, .answer-aqi, .stat b, ol.steps { font-variant-numeric: tabular-nums; }
+/* FINDING-003: touch targets of at least 44px */
+nav.toc a { min-height: 44px; display: inline-flex; align-items: center; }
+.data-notes summary, details.more > summary, details.card > summary { min-height: 44px; display: flex; align-items: center; }
+.do-first a.small, .view-bar button.link { display: inline-flex; align-items: center; min-height: 44px; }
+.chips-inline .chip { min-height: 32px; padding: 0 0.6rem; margin: 2px 0; }
+.chip { min-height: 36px; }
