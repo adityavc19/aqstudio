@@ -20,7 +20,15 @@ Next = Callable[[Request], Awaitable[Response]]
 
 
 def client_ip(request: Request) -> str:
-    """Client IP; behind Render's proxy the last X-Forwarded-For entry is the one it appended."""
+    """Client IP for rate limiting.
+
+    A configured trusted header (set by the host's edge, e.g. CF-Connecting-IP on Render) wins;
+    otherwise the last X-Forwarded-For entry (appended by the nearest proxy), then the socket.
+    """
+    header = getattr(request.app.state, "trusted_ip_header", "")
+    trusted = request.headers.get(header) if header else None
+    if trusted:
+        return trusted.strip()
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         return forwarded.split(",")[-1].strip()

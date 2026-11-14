@@ -55,6 +55,7 @@ def create_app(settings: Settings | None = None, llm: LLMClient | None = None) -
     app = FastAPI(
         title="Civic Air Quality Briefing Studio", version="0.2.0", docs_url=None, redoc_url=None
     )
+    app.state.trusted_ip_header = settings.trusted_ip_header
     app.state.deps = Deps(
         db=db,
         uploads=UploadRepo(db),

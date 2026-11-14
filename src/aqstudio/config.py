@@ -162,3 +162,4 @@ class Settings(BaseSettings):
     database_path: str = "aqstudio.sqlite3"
     frontend_dir: str = "frontend"
     cookie_secure: bool = False
+    trusted_ip_header: str = ""  # e.g. CF-Connecting-IP on Render; empty trusts no header
