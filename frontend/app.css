@@ -1,3 +1,9 @@
+@font-face {
+  font-family: "Public Sans";
+  src: url("/fonts/PublicSans-latin.woff2") format("woff2");
+  font-weight: 400 800;
+  font-display: swap;
+}
 :root {
   --bg: #f6f7f9;
   --card: #ffffff;
@@ -12,7 +18,7 @@
   --warn-bg: #fff4d6;
   --ok: #0b6b2e;
   --radius: 10px;
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: light;
 }
 * { box-sizing: border-box; }
@@ -199,3 +205,4 @@ details.more > summary { cursor: pointer; color: var(--accent); font-weight: 600
   .kpi-extra { font-size: 0.78rem; }
 }
 .do-list .badge { justify-self: start; }
+.kpi-value, td, .answer-aqi, .stat b, ol.steps { font-variant-numeric: tabular-nums; }
