@@ -16,7 +16,10 @@ def settings(tmp_path: Path) -> Settings:
 
 
 class FakeLLM:
-    """Cites the first fact correctly and one invented fact."""
+    """Cites the first fact correctly and one invented fact; counts calls."""
+
+    def __init__(self) -> None:
+        self.calls = 0
 
     def interpret_facts(
         self,
@@ -26,6 +29,7 @@ class FakeLLM:
         persona: Persona,
         context: str | None,
     ) -> list[ClaimDraft]:
+        self.calls += 1
         first = facts[0]
         quote = QuotedValue(fact_id=first.id, field="mean", value=float(first.values["mean"] or 0))
         return [
@@ -38,4 +42,20 @@ def hourly_csv(base: int = 30, hours: int = 24, day: int = 1) -> str:
     rows = ["Station ID,Timestamp,PM2.5 (ug/m3),PM10 (ug/m3),NO2 (ug/m3)"]
     for h in range(hours):
         rows.append(f"S1,2024-01-{day:02d}T{h:02d}:00:00Z,{base + h},{base * 2 + h},{20 + h}")
+    return "\n".join(rows)
+
+
+def station_csv(stations: list[tuple[str, str, str, str]], with_coords: bool = True) -> str:
+    """Hourly data per station: (id, name, lat, lon); with_coords=False drops lat/lon columns."""
+    coord_header = "Latitude,Longitude," if with_coords else ""
+    header = (
+        f"Station ID,Station Name,{coord_header}Timestamp,PM2.5 (ug/m3),PM10 (ug/m3),NO2 (ug/m3)"
+    )
+    rows = [header]
+    for sid, name, lat, lon in stations:
+        coords = f"{lat},{lon}," if with_coords else ""
+        for h in range(24):
+            rows.append(
+                f"{sid},{name},{coords}2024-01-01T{h:02d}:00:00Z,{40 + h},{80 + h},{20 + h}"
+            )
     return "\n".join(rows)

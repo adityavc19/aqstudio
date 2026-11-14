@@ -63,6 +63,14 @@ class AssumptionStatus(StrEnum):
     OVERRIDDEN = "overridden"
 
 
+class CoordinatesSource(StrEnum):
+    """Where station coordinates came from; never geocoded."""
+
+    UPLOADED = "uploaded"
+    STATIONS_FILE = "stations_file"
+    NONE = "none"
+
+
 class BriefStatus(StrEnum):
     """Lifecycle of a brief."""
 
@@ -214,6 +222,37 @@ class Action(BaseModel):
     gated_reason: str | None = None
 
 
+class StationLocation(BaseModel):
+    """A station's name and coordinates as found in the upload, with any problem noted."""
+
+    station_id: str
+    name: str
+    lat: float | None = None
+    lon: float | None = None
+    problem: str | None = None
+    detail: str = ""
+
+
+class StationInfo(BaseModel):
+    """Map-ready station summary. lat/lon come only from the upload or user-supplied files."""
+
+    station_id: str
+    name: str
+    lat: float | None
+    lon: float | None
+    aqi: float | None
+    category: str
+    reliability_grade: ReliabilityGrade
+
+
+class BriefSummary(BaseModel):
+    """Code-built summary stored with the brief's metadata for fast listing."""
+
+    status_line: str
+    worst_category: str
+    unreliable_count: int
+
+
 class Brief(BaseModel):
     """A complete stored briefing."""
 
@@ -229,6 +268,8 @@ class Brief(BaseModel):
     ledger_summary: dict[str, int]
     ledger: list[LedgerEntry] = Field(default_factory=list)
     assumptions: list[Assumption] = Field(default_factory=list)
+    stations: list[StationInfo] = Field(default_factory=list)
+    coordinates_source: CoordinatesSource = CoordinatesSource.NONE
     status: BriefStatus
     previous_id: str | None = None
 
@@ -357,6 +398,9 @@ class BriefListItem(BaseModel):
     created_at: str
     persona: Persona
     label: str
+    status_line: str | None = None
+    worst_category: str | None = None
+    unreliable_count: int | None = None
 
 
 class EvidenceResponse(BaseModel):
@@ -373,3 +417,28 @@ class HealthResponse(BaseModel):
 
     status: str
     version: str
+
+
+class LocationMatch(BaseModel):
+    """A locations-file row that updated a station."""
+
+    row: int
+    file_station: str
+    station_id: str
+
+
+class LocationRejection(BaseModel):
+    """A locations-file row that did not update any station, with the reason."""
+
+    row: int
+    file_station: str
+    reason: str
+
+
+class LocationsResponse(BaseModel):
+    """Response of POST /briefs/{id}/locations."""
+
+    stations: list[StationInfo]
+    coordinates_source: CoordinatesSource
+    matched: list[LocationMatch]
+    unmatched: list[LocationRejection]

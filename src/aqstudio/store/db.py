@@ -11,11 +11,19 @@ CREATE TABLE IF NOT EXISTS uploads (
 CREATE TABLE IF NOT EXISTS briefs (
     id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created_at REAL NOT NULL, persona TEXT NOT NULL,
     status TEXT NOT NULL, stage TEXT, previous_id TEXT,
-    brief_json TEXT, evidence_json TEXT, error_json TEXT
+    brief_json TEXT, evidence_json TEXT, error_json TEXT,
+    status_line TEXT, worst_category TEXT, unreliable_count INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_briefs_session ON briefs (session_id, created_at);
 CREATE TABLE IF NOT EXISTS llm_cache (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
+
+
+_MIGRATIONS = {
+    "status_line": "ALTER TABLE briefs ADD COLUMN status_line TEXT",
+    "worst_category": "ALTER TABLE briefs ADD COLUMN worst_category TEXT",
+    "unreliable_count": "ALTER TABLE briefs ADD COLUMN unreliable_count INTEGER",
+}
 
 
 class Database:
@@ -26,6 +34,10 @@ class Database:
         self._path = path
         with self.connect() as conn:
             conn.executescript(_SCHEMA)
+            existing = {row[1] for row in conn.execute("PRAGMA table_info(briefs)")}
+            for column, statement in _MIGRATIONS.items():
+                if column not in existing:
+                    conn.execute(statement)
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:

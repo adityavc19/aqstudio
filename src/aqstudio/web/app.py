@@ -17,7 +17,7 @@ from aqstudio.store.limits import UsageLimiter
 from aqstudio.store.repos import BriefRepo, UploadRepo
 from aqstudio.web.deps import Deps
 from aqstudio.web.errors import install_error_handlers
-from aqstudio.web.routes import briefs, health, uploads
+from aqstudio.web.routes import briefs, health, locations, uploads
 from aqstudio.web.security import install_security
 
 _SESSION_MAX_AGE = 30 * 24 * 3600
@@ -59,6 +59,7 @@ def create_app(settings: Settings | None = None, llm: LLMClient | None = None) -
     app.include_router(health.router, prefix="/api")
     app.include_router(uploads.router, prefix="/api")
     app.include_router(briefs.router, prefix="/api")
+    app.include_router(locations.router, prefix="/api")
     frontend = Path(settings.frontend_dir)
     if frontend.is_dir():
         app.mount("/", StaticFiles(directory=frontend, html=True), name="frontend")

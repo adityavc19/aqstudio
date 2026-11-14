@@ -2,7 +2,8 @@
 
 import re
 
-from aqstudio.config import NON_POLLUTANT_COLUMNS
+from aqstudio.clean.stations import extract_stations
+from aqstudio.config import LAT_COLUMNS, LON_COLUMNS, NON_POLLUTANT_COLUMNS
 from aqstudio.ingest.errors import IngestError
 from aqstudio.schemas import Assumption, ColumnMapping, RawTable
 
@@ -27,6 +28,12 @@ def propose_mapping(table: RawTable) -> tuple[list[ColumnMapping], list[Assumpti
             mapping.append(ColumnMapping(column=column, meaning="station_id"))
         elif key == "timestamp":
             mapping.append(ColumnMapping(column=column, meaning="timestamp"))
+        elif key == "station name":
+            mapping.append(ColumnMapping(column=column, meaning="station_name"))
+        elif key in LAT_COLUMNS:
+            mapping.append(ColumnMapping(column=column, meaning="latitude"))
+        elif key in LON_COLUMNS:
+            mapping.append(ColumnMapping(column=column, meaning="longitude"))
         elif key in NON_POLLUTANT_COLUMNS:
             mapping.append(ColumnMapping(column=column, meaning="ignore"))
         else:
@@ -63,6 +70,21 @@ def propose_mapping(table: RawTable) -> tuple[list[ColumnMapping], list[Assumpti
                 confidence=0.5,
             )
         )
+    swapped = [
+        loc.station_id for loc in extract_stations(table, mapping) if loc.problem == "swapped"
+    ]
+    if swapped:
+        assumptions.append(
+            Assumption(
+                id="coordinates_swapped",
+                kind="coordinates",
+                description="Coordinates look swapped (latitude and longitude) for: "
+                f"{', '.join(swapped)}. Confirm to swap them; otherwise these stations get no "
+                "map position.",
+                proposed={"station_ids": swapped},
+                confidence=0.7,
+            )
+        )
     return mapping, assumptions
 
 
@@ -77,5 +99,12 @@ def validate_mapping(table: RawTable, mapping: list[ColumnMapping]) -> None:
     for meaning in ("station_id", "timestamp"):
         if sum(m.meaning == meaning for m in mapping) != 1:
             raise IngestError(f"Mapping needs exactly one '{meaning}' column.", "invalid_mapping")
+    lat_count = sum(m.meaning == "latitude" for m in mapping)
+    lon_count = sum(m.meaning == "longitude" for m in mapping)
+    if lat_count != lon_count or lat_count > 1:
+        raise IngestError(
+            "Mapping needs both or neither of one 'latitude' and one 'longitude' column.",
+            "invalid_mapping",
+        )
     if not any(m.meaning == "pollutant" and m.pollutant for m in mapping):
         raise IngestError("Mapping needs at least one pollutant column.", "invalid_mapping")

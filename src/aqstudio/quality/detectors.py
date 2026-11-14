@@ -142,14 +142,20 @@ def detect_unit_mismatch(readings: list[Reading]) -> list[QualityFlag]:
     ]
 
 
+def assign_flag_ids(flags: list[QualityFlag]) -> list[QualityFlag]:
+    """Give flags sequential ids (Q1, Q2, ...) in list order."""
+    return [f.model_copy(update={"id": f"Q{i}"}) for i, f in enumerate(flags, start=1)]
+
+
 def detect_all(readings: list[Reading]) -> list[QualityFlag]:
     """Run every detector and return all flags with sequential ids (Q1, Q2, ...)."""
-    flags = [
-        *detect_ceiling(readings),
-        *detect_stuck(readings),
-        *detect_gaps(readings),
-        *detect_empty_columns(readings),
-        *detect_implausible(readings),
-        *detect_unit_mismatch(readings),
-    ]
-    return [f.model_copy(update={"id": f"Q{i}"}) for i, f in enumerate(flags, start=1)]
+    return assign_flag_ids(
+        [
+            *detect_ceiling(readings),
+            *detect_stuck(readings),
+            *detect_gaps(readings),
+            *detect_empty_columns(readings),
+            *detect_implausible(readings),
+            *detect_unit_mismatch(readings),
+        ]
+    )

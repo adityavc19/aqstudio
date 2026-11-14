@@ -27,6 +27,7 @@ from aqstudio.schemas import (
     EvidenceResponse,
     RawTable,
 )
+from aqstudio.summary import summarize
 from aqstudio.web.deps import Deps, get_deps, session_id
 from aqstudio.web.errors import ApiError
 from aqstudio.web.security import client_ip
@@ -44,6 +45,7 @@ def _run_brief(
     mapping: list[ColumnMapping],
     assumptions: list[Assumption],
     naive_is_ist: bool,
+    swap_ids: frozenset[str],
     request: BriefRequest,
 ) -> None:
     """Background job: build the brief and store it, or store an honest failure."""
@@ -53,6 +55,7 @@ def _run_brief(
             mapping,
             assumptions,
             naive_is_ist,
+            swap_ids,
             request.persona,
             request.context,
             request.previous_brief_id,
@@ -60,7 +63,7 @@ def _run_brief(
             brief_id=brief_id,
             on_stage=lambda stage: deps.briefs.set_stage(brief_id, stage),
         )
-        deps.briefs.save_ready(brief, evidence)
+        deps.briefs.save_ready(brief, evidence, summarize(brief.stations))
     except LLMError as exc:
         deps.briefs.save_failed(brief_id, ErrorBody(code="llm_unavailable", message=str(exc)))
     except IngestError as exc:
@@ -108,10 +111,25 @@ def create_brief(
     naive_is_ist = any(
         a.id == "timezone" and a.status == AssumptionStatus.OVERRIDDEN for a in assumptions
     )
+    swap_ids = frozenset(
+        sid
+        for a in assumptions
+        if a.id == "coordinates_swapped" and a.status == AssumptionStatus.CONFIRMED
+        for sid in a.proposed.get("station_ids", [])
+    )
     sid = session_id(request, create=True) or ""
     brief_id = deps.briefs.create_processing(sid, body.persona, body.previous_brief_id)
     tasks.add_task(
-        _run_brief, deps, deps.llm, brief_id, table, mapping, assumptions, naive_is_ist, body
+        _run_brief,
+        deps,
+        deps.llm,
+        brief_id,
+        table,
+        mapping,
+        assumptions,
+        naive_is_ist,
+        swap_ids,
+        body,
     )
     return BriefAccepted(brief_id=brief_id, status=BriefStatus.PROCESSING)
 
@@ -129,6 +147,9 @@ def list_briefs(request: Request, deps: Annotated[Deps, Depends(get_deps)]) -> l
             persona=b.persona,
             label=f"{b.persona.value.replace('_', ' ')} - "
             f"{datetime.fromtimestamp(b.created_at, UTC):%Y-%m-%d %H:%M} UTC",
+            status_line=b.status_line,
+            worst_category=b.worst_category,
+            unreliable_count=b.unreliable_count,
         )
         for b in deps.briefs.list_for_session(sid)
     ]

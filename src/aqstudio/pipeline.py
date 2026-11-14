@@ -7,20 +7,24 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from aqstudio.clean.normalize import clean_long
+from aqstudio.clean.stations import extract_stations
 from aqstudio.config import LEDGER_SAMPLE_SIZE
 from aqstudio.facts.build_facts import build_facts
 from aqstudio.llm.client import LLMClient
-from aqstudio.quality.detectors import detect_all
+from aqstudio.quality.coords import coordinate_flags
+from aqstudio.quality.detectors import assign_flag_ids, detect_all
 from aqstudio.quality.reliability import station_reliability
 from aqstudio.schemas import (
     Assumption,
     Brief,
     BriefStatus,
     ColumnMapping,
+    CoordinatesSource,
     Fact,
     Persona,
     RawTable,
 )
+from aqstudio.summary import station_infos
 from aqstudio.verify.claims import verify_claims
 
 _ROW_REF = re.compile(r"^row(\d+):")
@@ -47,6 +51,7 @@ def build_brief(
     mapping: list[ColumnMapping],
     assumptions: list[Assumption],
     naive_is_ist: bool,
+    swap_station_ids: frozenset[str],
     persona: Persona,
     context: str | None,
     previous_id: str | None,
@@ -58,7 +63,8 @@ def build_brief(
     on_stage("cleaning")
     cleaned = clean_long(table, mapping, naive_is_ist)
     on_stage("quality")
-    flags = detect_all(cleaned.readings)
+    locations = extract_stations(table, mapping, swap_station_ids)
+    flags = assign_flag_ids([*detect_all(cleaned.readings), *coordinate_flags(locations)])
     on_stage("facts")
     facts = build_facts(cleaned.readings, flags)
     reliability = station_reliability(facts, flags)
@@ -79,6 +85,12 @@ def build_brief(
         ledger_summary=dict(Counter(e.rule for e in cleaned.ledger)),
         ledger=cleaned.ledger[:LEDGER_SAMPLE_SIZE],
         assumptions=assumptions,
+        stations=station_infos(locations, facts, reliability),
+        coordinates_source=(
+            CoordinatesSource.UPLOADED
+            if any(loc.lat is not None for loc in locations)
+            else CoordinatesSource.NONE
+        ),
         status=BriefStatus.READY,
         previous_id=previous_id,
     )

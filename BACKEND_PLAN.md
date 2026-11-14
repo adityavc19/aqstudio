@@ -95,7 +95,8 @@ Location (lat/lon or place name) -> nearest stored stations (haversine on stored
 - `Fact`: id (`F1`...), kind, station_id, period, values (dict of numbers), coverage_pct, reliability_grade, evidence (list of row_refs and flag ids), spatial_note (distance to nearest station where relevant).
 - `Claim`: id, text, fact_ids, confidence, status (`verified|unverified`).
 - `Action`: id, persona, tier (`now|escalate|context`), effect_type (`exposure|source|evidence`), text, steps[], owner, escalate_to (generic role, never invented contacts), horizon (`today|week|structural`), success_signal, fact_ids, confidence, gated_reason (if downgraded to "verify sensor first").
-- `Brief`: id, created_at, persona, context, facts, claims, actions, flags, reliability, ledger_summary, status, previous_id.
+- `Brief`: id, created_at, persona, context, facts, claims, actions, flags, reliability, ledger_summary, status, previous_id, `stations: StationInfo[]`, `coordinates_source` (`uploaded|stations_file|none`).
+- `StationInfo`: station_id, name, lat|null, lon|null, aqi|null, category (CPCB category or `insufficient_data`), reliability_grade. Coordinates come only from the upload's own lat/lon columns or user-supplied locations; never geocoded. Validation: lat in [-90,90], lon in [-180,180], `(0,0)` and non-numeric rejected; values that look swapped produce a proposed `Assumption` (`coordinates_swapped`) that the user must confirm; stations without usable coordinates get a `no_coords` flag.
 - `Diff`: changed (fact pairs with delta), new_flags, resolved_flags, coverage_changes, `explained_by_coverage` (items), summary_inputs.
 - `Snapshot`: id, area_key, created_at, stations, facts, flags, guidance_en (claims + group sections), data_age_minutes.
 - `Rendered`: language, level, format, text, spoken_script, citations_preserved (bool), disclaimer.
@@ -161,7 +162,8 @@ Errors: `{ "error": { "code": "string", "message": "human readable", "detail": {
 - `GET /briefs/{id}` -> `{ id, status: "processing|ready|failed", stage?: string, brief?: Brief, error?: {...} }`
 - `GET /briefs/{id}/evidence/{fact_id}` -> `{ fact: Fact, rows: [{ row_ref, values }], flags: QualityFlag[], reliability: StationReliability }`
 - `GET /briefs/{id}/diff?against={other_id}` -> `Diff`
-- `GET /briefs` -> list for this browser session (signed cookie): `[{ id, created_at, persona, label }]`
+- `GET /briefs` -> list for this browser session (signed cookie): `[{ id, created_at, persona, label, status_line, worst_category, unreliable_count }]`. The last three are built in code when the brief is created and stored with its metadata (never recomputed on list); `status_line` e.g. "Poor at 3 of 5 stations, 1 unreliable"; `worst_category` is a CPCB category or `insufficient_data`; all three are `null` while a brief is processing or failed.
+- `POST /briefs/{id}/locations` (multipart `file` or JSON `{ "text": ... }`, CSV with columns `station_id,lat,lon`) -> `{ stations: StationInfo[], coordinates_source, matched: [{ row, file_station, station_id }], unmatched: [{ row, file_station, reason }] }`. Matches by id or normalised name. Updates only the map payload (stations, `coordinates_source="stations_file"`, drops now-resolved `no_coords` flags); never re-runs the LLM or analysis. Only the browser session that created the brief may call it (403 otherwise). Rows with invalid, `(0,0)` or swapped coordinates are reported in `unmatched`, never fixed silently.
 - `GET /briefs/{id}/render?language=hi&level=simple&format=whatsapp` -> `Rendered`
 - `POST /briefs/{id}/audio` body `{ language, level, section }` -> `{ audio_url, language, duration_s }`
 - `POST /briefs/{id}/share` -> `{ share_id, url }` (unlisted link, advisory only, no raw upload data, unguessable id)

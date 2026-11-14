@@ -28,7 +28,15 @@ CEILING_SENTINEL = 500.0  # sensor-fault ceiling seen in KSPCB exports (see CLAU
 CEILING_MIN_RUN = 4  # ASSUMPTION: consecutive sentinel readings before it is treated as a fault.
 STUCK_MIN_RUN = 8  # ASSUMPTION: identical consecutive readings before a sensor is stuck.
 GAP_MIN_HOURS = 24.0  # ASSUMPTION: silence between valid readings that counts as a gap.
-NON_POLLUTANT_COLUMNS = frozenset({"station id", "state", "city", "station name", "timestamp"})
+LAT_COLUMNS = frozenset({"latitude", "lat"})
+LON_COLUMNS = frozenset({"longitude", "lon", "lng"})
+NON_POLLUTANT_COLUMNS = frozenset(
+    {"station id", "state", "city", "station name", "timestamp"} | LAT_COLUMNS | LON_COLUMNS
+)
+# ASSUMPTION: rough bounding box of India (lat_min, lon_min, lat_max, lon_max), used only to
+# notice swapped latitude/longitude; coordinates are never invented or geocoded.
+INDIA_BBOX = (6.0, 68.0, 37.5, 97.5)
+MAX_LOCATION_ROWS = 2000
 
 # ASSUMPTION: coarse physical plausibility ranges (inclusive) for Indian ambient monitoring;
 # values outside are flagged, never deleted. Keys are canonical pollutant names.
