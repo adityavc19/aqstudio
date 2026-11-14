@@ -10,7 +10,7 @@ from aqstudio.config import LIVE_CACHE_SECONDS
 from aqstudio.llm.cache import cache_key
 from aqstudio.schemas import LiveArea
 from aqstudio.sources.live import live_area
-from aqstudio.sources.openaq import LiveDataError
+from aqstudio.sources.openaq import LiveDataBusy, LiveDataError
 from aqstudio.web.deps import Deps, get_deps
 from aqstudio.web.errors import ApiError
 from aqstudio.web.security import client_ip
@@ -43,6 +43,8 @@ def area_live(
             raise ApiError(429, "rate_limited", decision.reason)
     try:
         area = live_area(deps.public_data, lat, lon, datetime.now(UTC))
+    except LiveDataBusy as exc:
+        raise ApiError(503, "live_data_busy", str(exc)) from exc
     except LiveDataError as exc:
         raise ApiError(502, "live_data_unavailable", str(exc)) from exc
     if not area.stations:

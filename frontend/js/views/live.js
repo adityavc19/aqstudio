@@ -32,20 +32,22 @@ export async function liveView(params) {
   try {
     area = await api(`/areas/live?${new URLSearchParams({ lat, lon })}`);
   } catch (err) {
-    const msg = err.code === "no_data" ? err.message : `Live data is not available right now. ${err.message}`;
+    const msg = err.code === "no_data" || err.code === "live_data_busy" ? err.message : `Live data is not available right now. ${err.message}`;
     return show("Air near you", h("h1", {}, `Air near ${place}`), errorBox(msg, err.code), h("a", { class: "btn secondary", href: "#/" }, "Back"));
   }
   const rated = area.stations.filter((s) => s.aqi != null);
   const lead = rated[0] || area.stations[0];
+  const worse = rated.find((s) => s !== lead && s.aqi > (lead.aqi ?? 0) && s.category !== lead.category);
   show("Air near you",
     h("h1", {}, `Air near ${place}`),
     h("p", { class: "muted" }, `Rolling 24-hour CPCB rating · checked ${when(area.generated_at)}`),
     answer(lead),
     lead !== area.stations[0] ? h("p", { class: "small muted" }, `The nearest monitor, ${area.stations[0].name}, did not have enough recent data, so the next one is shown.`) : null,
-    area.health_statement ? h("section", { class: "card", "aria-labelledby": "health-h" },
-      h("h2", { id: "health-h" }, "What CPCB says about this level"),
-      h("p", {}, area.health_statement),
-      h("p", { class: "small muted" }, "Official CPCB health statement for the worst category nearby. For medical concerns, contact your doctor or local health authority.")) : null,
+    lead.health_statement ? h("section", { class: "card", "aria-labelledby": "health-h" },
+      h("h2", { id: "health-h" }, `What CPCB says about ${categoryLabel(lead.category)} air`),
+      h("p", {}, lead.health_statement),
+      h("p", { class: "small muted" }, "Official CPCB health statement. For medical concerns, contact your doctor or local health authority.")) : null,
+    worse ? h("p", { class: "note" }, `A nearby monitor is worse: ${worse.name}, ${worse.distance_km} km away, is ${categoryLabel(worse.category)} (AQI ${worse.aqi}).`) : null,
     h("section", { "aria-labelledby": "near-h" }, h("h2", { id: "near-h" }, "Nearby monitors"), h("ul", { class: "plain" }, area.stations.map(stationRow))),
     h("p", { class: "small muted fineprint" }, area.source),
     h("div", { class: "actions" }, h("a", { class: "btn secondary", href: "#/" }, "Back")));

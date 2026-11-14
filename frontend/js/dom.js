@@ -160,7 +160,8 @@ export const onLeave = (fn) => leaveHooks.push(fn);
 export function show(title, ...nodes) {
   while (leaveHooks.length) leaveHooks.pop()();
   document.title = `${title} | Air Quality Briefing Studio`;
-  main.replaceChildren(...nodes);
+  // Optional sections arrive as null/false; never let them render as text.
+  main.replaceChildren(...nodes.flat(Infinity).filter((n) => n != null && n !== false));
   const heading = main.querySelector("h1");
   if (heading) {
     heading.setAttribute("tabindex", "-1");

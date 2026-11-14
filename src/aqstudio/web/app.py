@@ -24,7 +24,7 @@ from aqstudio.llm.anthropic_client import AnthropicClient
 from aqstudio.llm.cache import CachedLLMClient
 from aqstudio.llm.client import LLMClient
 from aqstudio.llm.sarvam_client import SarvamClient
-from aqstudio.sources.live import PublicData
+from aqstudio.sources.live import CachedPublicData, PublicData
 from aqstudio.sources.openaq import OpenAQClient
 from aqstudio.store.db import Database
 from aqstudio.store.limits import UsageLimiter
@@ -66,10 +66,10 @@ def _build_speaker(settings: Settings) -> Speaker | None:
     return SarvamSpeaker(key) if key else None
 
 
-def _build_public_data(settings: Settings) -> PublicData | None:
-    """OpenAQ client when its key is configured."""
+def _build_public_data(settings: Settings, db: Database) -> PublicData | None:
+    """Cached OpenAQ client when its key is configured."""
     key = settings.openaq_api_key.get_secret_value()
-    return OpenAQClient(key) if key else None
+    return CachedPublicData(OpenAQClient(key), db) if key else None
 
 
 def create_app(
@@ -98,7 +98,7 @@ def create_app(
         shares=ShareRepo(db),
         translator=translator or _build_translator(settings),
         speaker=speaker or _build_speaker(settings),
-        public_data=public_data or _build_public_data(settings),
+        public_data=public_data or _build_public_data(settings, db),
         live_limiter=UsageLimiter(
             settings.database_path, LIVE_RATE_LIMIT_PER_HOUR, LIVE_DAILY_CAP, scope="live"
         ),

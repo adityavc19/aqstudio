@@ -102,3 +102,35 @@ def test_endpoint_caches_limits_and_fails_honestly(settings: Settings) -> None:
     )
     none = TestClient(create_app(settings, FakeLLM()))
     assert none.get("/api/areas/live", params={"lat": 28.6, "lon": 77.2}).status_code == 503
+
+
+def test_unusable_units_cost_no_upstream_call_and_duplicates_stop_early() -> None:
+    source = FakeOpenAQ()
+    live_area(source, 12.97, 77.59, NOW)
+    # 1 location call; Live Monitor: pm25 (first sensor already 24 h, dead duplicate 9 skipped),
+    # pm10, no2, co; Patchy: pm25, no2; SO2 in ppb is rejected before fetching.
+    assert source.calls == 1 + 4 + 2
+
+
+def test_upstream_rate_limit_is_reported_as_busy(settings: Settings) -> None:
+    from aqstudio.sources.openaq import LiveDataBusy
+
+    class Busy(FakeOpenAQ):
+        def locations_near(self, lat: float, lon: float) -> list[dict[str, Any]]:
+            raise LiveDataBusy("The public data service is busy. Please try again in a minute.")
+
+    client = TestClient(create_app(settings, FakeLLM(), public_data=Busy()))
+    resp = client.get("/api/areas/live", params={"lat": 23.26, "lon": 77.41})
+    assert resp.status_code == 503 and resp.json()["error"]["code"] == "live_data_busy"
+
+
+def test_cached_public_data_shares_sensor_hours(settings: Settings) -> None:
+    from aqstudio.sources.live import CachedPublicData
+    from aqstudio.store.db import Database
+
+    source = FakeOpenAQ()
+    cached = CachedPublicData(source, Database(settings.database_path))
+    live_area(cached, 12.97, 77.59, NOW)
+    first = source.calls
+    live_area(cached, 12.97, 77.59, NOW)
+    assert source.calls == first

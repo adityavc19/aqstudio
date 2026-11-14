@@ -12,6 +12,10 @@ class LiveDataError(RuntimeError):
     """Raised when the public-data service fails."""
 
 
+class LiveDataBusy(LiveDataError):
+    """Raised when the public-data service rate-limits us; worth retrying in a minute."""
+
+
 class OpenAQClient:
     """Calls OpenAQ with the server-side key; the key never reaches the browser."""
 
@@ -27,6 +31,8 @@ class OpenAQClient:
             )
         except httpx.HTTPError as exc:
             raise LiveDataError(f"Public data request failed ({type(exc).__name__}).") from exc
+        if response.status_code == 429:
+            raise LiveDataBusy("The public data service is busy. Please try again in a minute.")
         if response.status_code != 200:
             raise LiveDataError(f"Public data request failed (HTTP {response.status_code}).")
         results = response.json().get("results", [])
