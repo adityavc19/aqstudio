@@ -10,6 +10,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 LOCAL_TZ = "Asia/Kolkata"  # IST, +05:30; all readings are converted to this zone.
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_UPLOAD_ROWS = 200_000
+RATE_LIMIT_PER_HOUR = 5  # LLM-backed requests per client IP per hour.
+DAILY_CAP = 100  # LLM-backed requests per rolling 24h across all clients (protects API credits).
 MIN_COVERAGE_PCT = 75.0  # below this an aggregate is labelled unreliable.
 
 
@@ -21,6 +23,7 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr = SecretStr("")
     anthropic_model: str = "claude-sonnet-5-5"
     session_secret: SecretStr = SecretStr("")
+    database_path: str = "aqstudio.sqlite3"
 
 
 MISSING_TOKENS = frozenset({"", "-", "*", "na", "nan", "none", "null"})

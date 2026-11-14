@@ -11,13 +11,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from aqstudio.clean.long import clean_long
-from aqstudio.config import MAX_UPLOAD_BYTES, Settings
+from aqstudio.config import DAILY_CAP, MAX_UPLOAD_BYTES, RATE_LIMIT_PER_HOUR, Settings
 from aqstudio.facts.engine import build_facts
 from aqstudio.ingest.long_csv import IngestError, parse_long_csv
 from aqstudio.llm.anthropic_client import AnthropicInterpreter
 from aqstudio.llm.base import Interpreter, LLMError
 from aqstudio.quality.detectors import detect_all
 from aqstudio.schemas import Persona
+from aqstudio.store.limits import UsageLimiter
 from aqstudio.verify.claims import verify_claims
 
 _BASE = Path(__file__).parent
@@ -34,12 +35,23 @@ def _default_interpreter() -> Interpreter | None:
     return AnthropicInterpreter(anthropic.Anthropic(api_key=key), settings.anthropic_model)
 
 
-def create_app(interpreter: Interpreter | None = None) -> FastAPI:
-    """Create the app; the interpreter is injected so tests can substitute a fake."""
+def _client_ip(request: Request) -> str:
+    """Client IP; behind Render's proxy the last X-Forwarded-For entry is the one it appended."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[-1].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def create_app(
+    interpreter: Interpreter | None = None, limiter: UsageLimiter | None = None
+) -> FastAPI:
+    """Create the app; interpreter and limiter are injected so tests can substitute fakes."""
     app = FastAPI(title="Civic Air Quality Briefing Studio", docs_url=None, redoc_url=None)
     templates = Jinja2Templates(directory=_BASE / "templates")
     app.mount("/static", StaticFiles(directory=_BASE / "static"), name="static")
     resolved = interpreter if interpreter is not None else _default_interpreter()
+    usage = limiter or UsageLimiter(Settings().database_path, RATE_LIMIT_PER_HOUR, DAILY_CAP)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):  # type: ignore[no-untyped-def]
@@ -66,6 +78,10 @@ def create_app(interpreter: Interpreter | None = None) -> FastAPI:
         def fail(message: str, status: int) -> HTMLResponse:
             return page(request, "error.html", status, message=message)
 
+        origin = request.headers.get("origin")
+        if origin and origin != f"{request.url.scheme}://{request.headers.get('host', '')}":
+            return fail("Cross-origin submissions are not allowed.", 403)
+
         text = pasted
         if file is not None and file.filename:
             if Path(file.filename).suffix.lower() not in _ALLOWED_SUFFIXES:
@@ -85,6 +101,9 @@ def create_app(interpreter: Interpreter | None = None) -> FastAPI:
         facts = build_facts(cleaned.readings, flags)
         if resolved is None:
             return fail("The AI service is not configured on this server (no API key).", 503)
+        decision = usage.check_and_record(_client_ip(request))
+        if not decision.allowed:
+            return fail(decision.reason, 429)
         try:
             drafts = resolved.interpret_facts(
                 facts, dict(Counter(f.kind.value for f in flags)), persona
