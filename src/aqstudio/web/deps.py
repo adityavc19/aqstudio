@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from fastapi import Request
 
+from aqstudio.advisory.speech import Speaker
 from aqstudio.advisory.translate import Translator
 from aqstudio.llm.client import LLMClient
 from aqstudio.store.db import Database
@@ -24,6 +25,7 @@ class Deps:
     llm: LLMClient | None
     shares: ShareRepo
     translator: Translator | None = None
+    speaker: Speaker | None = None
 
 
 def get_deps(request: Request) -> Deps:

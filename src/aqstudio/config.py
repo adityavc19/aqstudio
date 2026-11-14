@@ -145,6 +145,8 @@ ADVISORY_LANGUAGES = {
 }
 READING_LEVELS = ("simple", "standard")
 SARVAM_TRANSLATE_MODEL = "mayura:v1"
+SARVAM_TTS_MODEL = "bulbul:v3"
+TTS_MAX_CHARS = 1500  # ASSUMPTION: kept under Bulbul's per-request text limit.
 ADVISORY_DISCLAIMER = (
     "General guidance only, based on the uploaded data. For any health concern contact your "
     "doctor or local health authority. AI-written; translations are machine-made, please review."

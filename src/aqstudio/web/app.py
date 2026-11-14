@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
+from aqstudio.advisory.speech import SarvamSpeaker, Speaker
 from aqstudio.advisory.translate import SarvamTranslator, Translator
 from aqstudio.config import (
     DAILY_CAP,
@@ -55,10 +56,17 @@ def _build_translator(settings: Settings) -> Translator | None:
     return SarvamTranslator(key) if key else None
 
 
+def _build_speaker(settings: Settings) -> Speaker | None:
+    """Sarvam speech when its key is configured."""
+    key = settings.sarvam_api_key.get_secret_value()
+    return SarvamSpeaker(key) if key else None
+
+
 def create_app(
     settings: Settings | None = None,
     llm: LLMClient | None = None,
     translator: Translator | None = None,
+    speaker: Speaker | None = None,
 ) -> FastAPI:
     """Create the app; settings and the LLM client are injectable so tests can substitute fakes."""
     settings = settings or Settings()
@@ -78,6 +86,7 @@ def create_app(
         llm=llm if llm is not None else _build_llm(settings, db),
         shares=ShareRepo(db),
         translator=translator or _build_translator(settings),
+        speaker=speaker or _build_speaker(settings),
     )
     db.purge_expired(time.time())
     app.state.deps.briefs.fail_orphaned()

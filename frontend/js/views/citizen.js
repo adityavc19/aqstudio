@@ -33,9 +33,18 @@ export async function citizenView(shareId) {
       const doc = await api(`/share/${encodeURIComponent(shareId)}/advisory?${new URLSearchParams({ language: lang.value, level: level.value })}`);
       const byKey = Object.fromEntries(doc.sections.map((s) => [s.key, s]));
       const panel = h("div", { role: "tabpanel" });
+      const spokenLevel = level.value;
       const tabs = radioTabs("Advice for", GROUPS, (key) => {
         const s = byKey[key];
-        panel.replaceChildren(h("section", { lang: s.translated ? doc.language : "en" }, h("h3", {}, s.title), h("p", { class: "big-text" }, s.text), s.verified ? null : h("p", { class: "note small", lang: "en" }, "⚠ This part could not be fully checked against the data.")));
+        const player = h("div", { class: "no-print" });
+        const listen = h("button", { type: "button", class: "secondary", onclick: () => {
+          const src = `/api/share/${encodeURIComponent(shareId)}/audio?${new URLSearchParams({ language: doc.language, level: spokenLevel, group: key })}`;
+          const audio = h("audio", { controls: true, src, "aria-label": `Advice for ${GROUPS[key]}, read aloud` });
+          audio.addEventListener("error", () => player.replaceChildren(errorBox("Audio is not available right now. The written advice above is complete.")));
+          player.replaceChildren(audio);
+          audio.play().catch(() => {});
+        } }, "▶ Listen");
+        panel.replaceChildren(h("section", { lang: s.translated ? doc.language : "en" }, h("h3", {}, s.title), h("p", { class: "big-text" }, s.text), s.verified ? null : h("p", { class: "note small", lang: "en" }, "⚠ This part could not be fully checked against the data.")), h("div", { class: "actions no-print" }, listen), player);
       });
       tabs.select("everyone");
       const head = byKey.headline;
