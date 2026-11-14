@@ -12,6 +12,7 @@ from aqstudio.config import DAILY_CAP, RATE_LIMIT_PER_HOUR, Settings
 from aqstudio.llm.anthropic_client import AnthropicClient
 from aqstudio.llm.cache import CachedLLMClient
 from aqstudio.llm.client import LLMClient
+from aqstudio.llm.sarvam_client import SarvamClient
 from aqstudio.store.db import Database
 from aqstudio.store.limits import UsageLimiter
 from aqstudio.store.repos import BriefRepo, UploadRepo
@@ -24,12 +25,20 @@ _SESSION_MAX_AGE = 30 * 24 * 3600
 
 
 def _build_llm(settings: Settings, db: Database) -> LLMClient | None:
-    """Build the real, cached LLM client; None when no API key is configured."""
-    key = settings.anthropic_api_key.get_secret_value()
-    if not key:
-        return None
-    inner = AnthropicClient(anthropic.Anthropic(api_key=key), settings.anthropic_model)
-    return CachedLLMClient(inner, db, settings.anthropic_model)
+    """Build the real, cached LLM client for the configured provider; None if no key is set."""
+    anthropic_key = settings.anthropic_api_key.get_secret_value()
+    sarvam_key = settings.sarvam_api_key.get_secret_value()
+    provider = settings.llm_provider
+    if provider == "anthropic" or (provider == "auto" and anthropic_key):
+        if not anthropic_key:
+            return None
+        model = settings.anthropic_model
+        inner: LLMClient = AnthropicClient(anthropic.Anthropic(api_key=anthropic_key), model)
+        return CachedLLMClient(inner, db, f"anthropic:{model}")
+    if sarvam_key:
+        model = settings.sarvam_model
+        return CachedLLMClient(SarvamClient(sarvam_key, model), db, f"sarvam:{model}")
+    return None
 
 
 def create_app(settings: Settings | None = None, llm: LLMClient | None = None) -> FastAPI:

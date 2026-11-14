@@ -83,6 +83,10 @@ PM_RATIO_COMBUSTION = 0.6
 PM_RATIO_DUST = 0.4
 HOTSPOT_MIN_STATIONS = 2
 
+SARVAM_BASE_URL = "https://api.sarvam.ai"  # OpenAI-compatible chat API lives under /v2.
+SARVAM_MAX_TOKENS = 6000  # reasoning tokens share this budget, so keep it generous.
+SARVAM_TIMEOUT_S = 120.0
+
 # Verification and comparison.
 VERIFIER_DROP_UNVERIFIED = False  # False: show unverified claims, visibly marked.
 NUMBER_REL_TOLERANCE = 0.01  # quoted numbers may differ from the fact by rounding only.
@@ -100,6 +104,9 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-sonnet-5-5"
     session_secret: SecretStr = SecretStr("")
     refresh_token: SecretStr = SecretStr("")
+    sarvam_api_key: SecretStr = SecretStr("")
+    sarvam_model: str = "sarvam-105b"
+    llm_provider: str = "auto"  # auto | anthropic | sarvam
     database_path: str = "aqstudio.sqlite3"
     frontend_dir: str = "frontend"
     cookie_secure: bool = False

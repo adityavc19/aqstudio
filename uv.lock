@@ -64,6 +64,7 @@ source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "itsdangerous" },
     { name = "jinja2" },
     { name = "pandas" },
@@ -75,7 +76,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "mypy" },
     { name = "pandas-stubs" },
     { name = "pip-audit" },
@@ -88,6 +88,7 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = "==2.8.0" },
     { name = "fastapi", specifier = "==0.162.7" },
+    { name = "httpx", specifier = "==0.28.1" },
     { name = "itsdangerous", specifier = "==2.2.0" },
     { name = "jinja2", specifier = "==3.1.6" },
     { name = "pandas", specifier = "==3.1.1" },
@@ -99,7 +100,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = "==0.28.1" },
     { name = "mypy", specifier = "==2.4.1" },
     { name = "pandas-stubs", specifier = "==3.1.0.261029" },
     { name = "pip-audit", specifier = "==2.10.1" },

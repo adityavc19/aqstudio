@@ -27,3 +27,10 @@ def test_unknown_missing_and_mismatched_rejected() -> None:
     assert "Unknown fact id" in claims[0].notes[0]
     assert "No fact cited" in claims[1].notes[0]
     assert "does not match" in claims[2].notes[0]
+
+
+def test_coverage_pct_is_a_quotable_field() -> None:
+    ok = QuotedValue(fact_id="F1", field="coverage_pct", value=90.0)
+    bad = QuotedValue(fact_id="F1", field="coverage_pct", value=50.0)
+    first, second = verify_claims([_draft(["F1"], [ok]), _draft(["F1"], [bad])], [FACT])
+    assert first.status == ClaimStatus.VERIFIED and second.status == ClaimStatus.UNVERIFIED

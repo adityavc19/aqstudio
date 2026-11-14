@@ -9,6 +9,13 @@ def _matches(actual: float, quoted: float) -> bool:
     return abs(actual - quoted) <= max(NUMBER_ABS_TOLERANCE, NUMBER_REL_TOLERANCE * abs(actual))
 
 
+def _field_value(fact: Fact, field: str) -> float | str | None:
+    """Look a quoted field up in the fact's values, or its top-level coverage_pct."""
+    if field == "coverage_pct":
+        return fact.coverage_pct
+    return fact.values.get(field)
+
+
 def verify_claims(drafts: list[ClaimDraft], facts: list[Fact]) -> list[Claim]:
     """Mark each claim verified only if it cites known facts and quotes matching numbers."""
     by_id = {f.id: f for f in facts}
@@ -23,7 +30,7 @@ def verify_claims(drafts: list[ClaimDraft], facts: list[Fact]) -> list[Claim]:
             if fact is None or quote.fact_id not in draft.fact_ids:
                 notes.append(f"Quoted number refers to uncited or unknown fact: {quote.fact_id}")
                 continue
-            actual = fact.values.get(quote.field)
+            actual = _field_value(fact, quote.field)
             if not isinstance(actual, int | float) or not _matches(float(actual), quote.value):
                 notes.append(
                     f"Quoted {quote.field}={quote.value} does not match fact value {actual}."
