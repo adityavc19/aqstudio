@@ -99,6 +99,9 @@ class Assumption(BaseModel):
     proposed: Any
     confidence: float = Field(ge=0, le=1)
     status: AssumptionStatus = AssumptionStatus.PROPOSED
+    default_applied: bool = True  # False: only applied once the user confirms it
+    confirm_label: str = "Yes, that is right"
+    alternative_label: str = ""  # empty: informational, nothing for the user to choose
 
 
 class LedgerEntry(BaseModel):
@@ -338,6 +341,16 @@ class Preview(BaseModel):
     rows: list[list[str]]
 
 
+class UploadStats(BaseModel):
+    """Facts about an upload shown before the user creates a brief."""
+
+    rows: int
+    stations: list[str]
+    period_start: str | None
+    period_end: str | None
+    pollutants: list[str]
+
+
 class UploadResponse(BaseModel):
     """Result of POST /uploads."""
 
@@ -346,6 +359,8 @@ class UploadResponse(BaseModel):
     preview: Preview
     mapping: list[ColumnMapping]
     assumptions: list[Assumption]
+    stats: UploadStats
+    early_flags: list[QualityFlag]
     warnings: list[str]
 
 

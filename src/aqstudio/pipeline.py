@@ -16,6 +16,7 @@ from aqstudio.llm.client import LLMClient
 from aqstudio.quality.coords import coordinate_flags
 from aqstudio.quality.detectors import assign_flag_ids, detect_all
 from aqstudio.quality.reliability import station_reliability
+from aqstudio.quality.units import Conversion
 from aqstudio.schemas import (
     Assumption,
     Brief,
@@ -80,6 +81,7 @@ def build_brief(
     naive_is_ist: bool,
     day_first: bool | None,
     swap_station_ids: frozenset[str],
+    conversions: dict[str, Conversion],
     persona: Persona,
     context: str | None,
     previous_id: str | None,
@@ -89,7 +91,7 @@ def build_brief(
 ) -> tuple[Brief, dict[str, dict[str, str]]]:
     """Run the full pipeline and return the brief with the source rows its facts cite."""
     on_stage("cleaning")
-    cleaned = clean_long(table, mapping, naive_is_ist, day_first)
+    cleaned = clean_long(table, mapping, naive_is_ist, day_first, conversions)
     on_stage("quality")
     locations = extract_stations(table, mapping, swap_station_ids)
     flags = assign_flag_ids([*detect_all(cleaned.readings), *coordinate_flags(locations)])

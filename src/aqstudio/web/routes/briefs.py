@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 
+from aqstudio.clean.normalize import canonical_pollutant
 from aqstudio.compare.diff import diff_briefs
 from aqstudio.config import BRIEF_TIMEOUT_S
 from aqstudio.ingest.errors import IngestError
@@ -14,6 +15,7 @@ from aqstudio.ingest.parse_long import parse_long_csv
 from aqstudio.ingest.propose import propose_mapping, validate_mapping
 from aqstudio.llm.client import LLMClient, LLMError
 from aqstudio.pipeline import build_brief
+from aqstudio.quality.units import Conversion, conversion_for, normalize_unit
 from aqstudio.schemas import (
     Assumption,
     AssumptionStatus,
@@ -49,6 +51,7 @@ def _run_brief(
     naive_is_ist: bool,
     day_first: bool | None,
     swap_ids: frozenset[str],
+    conversions: dict[str, Conversion],
     request: BriefRequest,
 ) -> None:
     """Background job: build the brief and store it, or store an honest failure."""
@@ -60,6 +63,7 @@ def _run_brief(
             naive_is_ist,
             day_first,
             swap_ids,
+            conversions,
             request.persona,
             request.context,
             request.previous_brief_id,
@@ -78,6 +82,25 @@ def _run_brief(
             brief_id,
             ErrorBody(code="internal_error", message="Brief generation failed unexpectedly."),
         )
+
+
+def approved_conversions(
+    assumptions: list[Assumption], mapping: list[ColumnMapping]
+) -> dict[str, Conversion]:
+    """Conversions the user approved, re-derived from the final mapping (stale ones ignored)."""
+    approved: dict[str, Conversion] = {}
+    for a in assumptions:
+        if a.kind != "unit_conversion" or a.status != AssumptionStatus.CONFIRMED:
+            continue
+        column = a.proposed["column"]
+        for m in mapping:
+            if m.column == column and m.meaning == "pollutant" and m.pollutant and m.unit:
+                conversion = conversion_for(
+                    canonical_pollutant(m.pollutant), normalize_unit(m.unit)
+                )
+                if conversion is not None:
+                    approved[column] = conversion
+    return approved
 
 
 def _apply_choices(assumptions: list[Assumption], req: BriefRequest) -> list[Assumption]:
@@ -136,6 +159,7 @@ def create_brief(
         naive_is_ist,
         day_first,
         swap_ids,
+        approved_conversions(assumptions, mapping),
         body,
     )
     return BriefAccepted(brief_id=brief_id, status=BriefStatus.PROCESSING)

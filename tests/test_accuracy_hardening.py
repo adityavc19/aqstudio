@@ -101,7 +101,7 @@ def test_every_number_the_model_sees_is_a_citable_fact_and_fact_cap_is_reported(
     table = parse_long_csv(station_csv([(f"S{i}", f"N{i}", "", "") for i in range(30)], False))
     mapping, assumptions = propose_mapping(table)
     brief, _ = build_brief(
-        table, mapping, assumptions, False, None, frozenset(), Persona.OTHER, None, None, llm
+        table, mapping, assumptions, False, None, frozenset(), {}, Persona.OTHER, None, None, llm
     )
     kinds = {f.kind for f in brief.facts}
     assert {"station_reliability", "pollutant_mean", "aqi_latest"} <= kinds
@@ -124,10 +124,10 @@ def _state(client: TestClient, text: str, **body: object) -> dict[str, object]:
 def test_unusable_uploads_fail_honestly_before_any_llm_call(settings: Settings) -> None:
     llm = FakeLLM()
     client = _client(settings, llm)
-    long_id = _state(client, H + _rows("X" * 65, 1, range(24)))
-    assert long_id["error"]["code"] == "invalid_table"  # type: ignore[index]
-    bad_dates = _state(client, H + "S1,not-a-date,1,2,3\n" * 5)
-    assert bad_dates["error"]["code"] == "invalid_timestamps"  # type: ignore[index]
+    long_id = client.post("/api/uploads", json={"text": H + _rows("X" * 65, 1, range(24))})
+    assert long_id.status_code == 422 and long_id.json()["error"]["code"] == "invalid_table"
+    bad_dates = client.post("/api/uploads", json={"text": H + "S1,not-a-date,1,2,3\n" * 5})
+    assert bad_dates.json()["error"]["code"] == "invalid_timestamps"
     empty = _state(client, H + "".join(f"S1,2024-01-01T{h:02d}:00:00Z,,,\n" for h in range(24)))
     assert empty["error"]["code"] == "no_data" and llm.calls == 0  # type: ignore[index]
 

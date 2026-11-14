@@ -4,14 +4,17 @@ import re
 
 import pandas as pd
 
+from aqstudio.clean.normalize import canonical_pollutant
 from aqstudio.clean.stations import extract_stations
 from aqstudio.config import (
+    EXPECTED_UNITS,
     LAT_COLUMNS,
     LON_COLUMNS,
     MAX_POLLUTANT_CHARS,
     NON_POLLUTANT_COLUMNS,
 )
 from aqstudio.ingest.errors import IngestError
+from aqstudio.quality.units import conversion_for, normalize_unit
 from aqstudio.schemas import Assumption, ColumnMapping, RawTable
 
 _HEADER_UNIT = re.compile(r"^(?P<name>.+?)\s*\((?P<unit>[^)]*)\)\s*$")
@@ -60,10 +63,11 @@ def propose_mapping(table: RawTable) -> tuple[list[ColumnMapping], list[Assumpti
         Assumption(
             id="timezone",
             kind="timezone",
-            description="Timestamps without a UTC offset are in UTC (CPCB exports are UTC). "
-            "Override to treat them as IST.",
+            description="Timestamps without a UTC offset are read as UTC (CPCB exports are UTC).",
             proposed="UTC",
             confidence=0.8,
+            confirm_label="Yes, UTC",
+            alternative_label="No, they are IST",
         )
     ]
     if unitless:
@@ -77,6 +81,7 @@ def propose_mapping(table: RawTable) -> tuple[list[ColumnMapping], list[Assumpti
                 confidence=0.5,
             )
         )
+    assumptions.extend(_conversion_proposals(mapping))
     ts_column = next(m.column for m in mapping if m.meaning == "timestamp")
     sample = pd.Series([r[table.columns.index(ts_column)] for r in table.rows[:50] if r], dtype=str)
     sample = sample[~sample.str.fullmatch(r"\s*\d{4}\s*") & (sample.str.strip() != "")]
@@ -87,9 +92,11 @@ def propose_mapping(table: RawTable) -> tuple[list[ColumnMapping], list[Assumpti
                 id="date_order",
                 kind="date_order",
                 description="Timestamps are not ISO formatted. They are read day-first "
-                "(DD-MM-YYYY, the Indian convention). Override to read them month-first.",
+                "(DD-MM-YYYY, the Indian convention).",
                 proposed="day_first",
                 confidence=0.6,
+                confirm_label="Yes, day first",
+                alternative_label="No, month first",
             )
         )
     swapped = [
@@ -105,9 +112,47 @@ def propose_mapping(table: RawTable) -> tuple[list[ColumnMapping], list[Assumpti
                 "map position.",
                 proposed={"station_ids": swapped},
                 confidence=0.7,
+                default_applied=False,
+                confirm_label="Swap them",
+                alternative_label="Leave them off the map",
             )
         )
     return mapping, assumptions
+
+
+def _conversion_proposals(mapping: list[ColumnMapping]) -> list[Assumption]:
+    """One approvable conversion per column whose unit differs from CPCB's but has a safe fix."""
+    proposals: list[Assumption] = []
+    for m in mapping:
+        if m.meaning != "pollutant" or not m.pollutant or not m.unit:
+            continue
+        pollutant, unit = canonical_pollutant(m.pollutant), normalize_unit(m.unit)
+        conversion = conversion_for(pollutant, unit)
+        if conversion is None:
+            continue
+        how = "exact" if conversion.exact else "approximate, at 25 C and 1 atm"
+        proposals.append(
+            Assumption(
+                id=f"convert_unit:{m.column}",
+                kind="unit_conversion",
+                description=f"{pollutant} is labelled '{unit}' but CPCB uses "
+                f"'{EXPECTED_UNITS[pollutant]}'. Multiply its values by {conversion.factor:g} "
+                f"({how})? Until you approve, {pollutant} is left out of the statistics and AQI.",
+                proposed={
+                    "column": m.column,
+                    "pollutant": pollutant,
+                    "from_unit": conversion.from_unit,
+                    "to_unit": conversion.to_unit,
+                    "factor": conversion.factor,
+                    "exact": conversion.exact,
+                },
+                confidence=0.9 if conversion.exact else 0.6,
+                default_applied=False,
+                confirm_label="Approve conversion",
+                alternative_label="Keep it excluded",
+            )
+        )
+    return proposals
 
 
 def validate_mapping(table: RawTable, mapping: list[ColumnMapping]) -> None:

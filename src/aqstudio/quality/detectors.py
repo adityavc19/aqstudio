@@ -14,6 +14,7 @@ from aqstudio.config import (
     STUCK_MIN_RUN,
     ZERO_RUN_OK,
 )
+from aqstudio.quality.units import conversion_for
 from aqstudio.schemas import FlagKind, QualityFlag, Reading, Severity
 
 _Series = dict[tuple[str, str], list[Reading]]
@@ -170,7 +171,12 @@ def detect_unit_mismatch(readings: list[Reading]) -> list[QualityFlag]:
             FlagKind.UNIT_MISMATCH,
             Severity.CRITICAL,
             f"{pollutant} is labelled '{items[0].unit}' but CPCB uses "
-            f"'{EXPECTED_UNITS[pollutant]}'. Excluded from statistics and AQI; not converted.",
+            f"'{EXPECTED_UNITS[pollutant]}'. Excluded from statistics and AQI"
+            + (
+                " until you approve a conversion."
+                if conversion_for(pollutant, items[0].unit)
+                else "; there is no safe automatic conversion."
+            ),
             items,
         )
         for (_, pollutant), items in _by_series(readings).items()

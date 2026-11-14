@@ -12,7 +12,7 @@ from aqstudio.config import (
     POLLUTANT_ALIASES,
 )
 from aqstudio.ingest.errors import IngestError
-from aqstudio.quality.units import normalize_unit
+from aqstudio.quality.units import Conversion, normalize_unit
 from aqstudio.schemas import CleanResult, ColumnMapping, LedgerEntry, RawTable, Reading
 
 _TZ_SUFFIX = r"(?:Z|[+-]\d{2}:?\d{2})$"
@@ -34,12 +34,14 @@ def clean_long(
     mapping: list[ColumnMapping],
     naive_is_ist: bool = False,
     day_first: bool | None = None,
+    conversions: dict[str, Conversion] | None = None,
 ) -> CleanResult:
     """Tidy a long table: drop non-timestamp rows, convert to IST, null bad values.
 
     day_first=None accepts ISO timestamps only; True/False also accepts other formats read
-    day-first or month-first.
+    day-first or month-first. `conversions` maps a column to a user-approved unit conversion.
     """
+    conversions = conversions or {}
     id_col = _column(mapping, "station_id")
     ts_col = _column(mapping, "timestamp")
     pollutants = {m.column: m for m in mapping if m.meaning == "pollutant" and m.pollutant}
@@ -141,8 +143,21 @@ def clean_long(
         for row, header, value in zip(junk["_row"], junk["header"], junk["raw"], strict=True)
     )
 
+    for header, conversion in conversions.items():
+        numeric = numeric.where(long["header"] != header, numeric * conversion.factor)
+        ledger.append(
+            LedgerEntry(
+                row_ref=f"col:{header}",
+                rule="convert_unit",
+                before=conversion.from_unit,
+                after=conversion.to_unit,
+                reason=f"Approved by the user: values multiplied by {conversion.factor:g} "
+                f"({'exact' if conversion.exact else 'approximate'}).",
+            )
+        )
     names = {h: canonical_pollutant(m.pollutant or h) for h, m in pollutants.items()}
     units = {h: normalize_unit(m.unit) if m.unit else "unknown" for h, m in pollutants.items()}
+    units.update({h: c.to_unit for h, c in conversions.items()})
     long = long.assign(_value=numeric).sort_values(["header", id_col, "_ts"])
     readings = [
         Reading.model_construct(  # inputs are already validated above; skips per-row validation

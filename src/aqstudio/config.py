@@ -76,6 +76,12 @@ EXPECTED_UNITS = {
     "CO": "mg/m3",
 }
 
+# Gas ppb/ppm -> mass concentration uses molecular weight and the molar volume at 25 C, 1 atm
+# (24.45 L/mol). This is approximate (real temperature and pressure differ) and is only ever
+# applied after the user approves it.
+MOLAR_VOLUME_L = 24.45
+GAS_MOLECULAR_WEIGHT = {"NO2": 46.0055, "SO2": 64.066, "O3": 47.9982, "NH3": 17.031, "CO": 28.010}
+
 # CPCB National AQI (India). Concentration edges map to index edges INDEX_EDGES; the Severe
 # band tops out at edge5 + (edge5 - edge4), the CPCB convention that reproduces the published
 # PM2.5 worked example (150 ug/m3 -> 323). Units: ug/m3, except CO in mg/m3.

@@ -4,19 +4,51 @@ import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
+from starlette.concurrency import run_in_threadpool
 
+from aqstudio.clean.normalize import clean_long
 from aqstudio.config import PREVIEW_ROWS
 from aqstudio.ingest.errors import IngestError
 from aqstudio.ingest.parse_long import parse_long_csv
 from aqstudio.ingest.propose import propose_mapping
 from aqstudio.ingest.sniff import DetectedFormat, detect_format
-from aqstudio.schemas import Preview, UploadResponse
+from aqstudio.quality.detectors import detect_all
+from aqstudio.schemas import (
+    Assumption,
+    ColumnMapping,
+    Preview,
+    QualityFlag,
+    RawTable,
+    Severity,
+    UploadResponse,
+    UploadStats,
+)
 from aqstudio.web.body import extract_text
 from aqstudio.web.deps import Deps, get_deps
 from aqstudio.web.errors import ApiError
 from aqstudio.web.security import client_ip
 
 router = APIRouter()
+_EARLY_FLAG_LIMIT = 30
+_SEVERITY_ORDER = {Severity.CRITICAL: 0, Severity.WARN: 1, Severity.INFO: 2}
+
+
+def _analyse(
+    table: RawTable, mapping: list[ColumnMapping], assumptions: list[Assumption]
+) -> tuple[UploadStats, list[QualityFlag]]:
+    """Clean with the default assumptions (no AI) so the user sees the data's problems first."""
+    day_first = True if any(a.id == "date_order" for a in assumptions) else None
+    cleaned = clean_long(table, mapping, False, day_first)
+    flags = sorted(detect_all(cleaned.readings), key=lambda f: _SEVERITY_ORDER[f.severity])
+    stamps = [r.ts for r in cleaned.readings]
+    stats = UploadStats(
+        rows=len(table.rows),
+        stations=sorted({r.station_id for r in cleaned.readings}),
+        period_start=min(stamps).isoformat() if stamps else None,
+        period_end=max(stamps).isoformat() if stamps else None,
+        pollutants=sorted({r.pollutant for r in cleaned.readings}),
+    )
+    return stats, flags[:_EARLY_FLAG_LIMIT]
 
 
 @router.post("/uploads")
@@ -50,6 +82,10 @@ async def create_upload(
         status = 413 if exc.code == "file_too_large" else 422
         raise ApiError(status, exc.code, str(exc)) from exc
     mapping, assumptions = propose_mapping(table)
+    try:
+        stats, early_flags = await run_in_threadpool(_analyse, table, mapping, assumptions)
+    except IngestError as exc:
+        raise ApiError(422, exc.code, str(exc)) from exc
     warnings = (
         [] if any(m.meaning == "pollutant" for m in mapping) else ["No pollutant columns found."]
     )
@@ -60,5 +96,7 @@ async def create_upload(
         preview=Preview(columns=table.columns, rows=table.rows[:PREVIEW_ROWS]),
         mapping=mapping,
         assumptions=assumptions,
+        stats=stats,
+        early_flags=early_flags,
         warnings=warnings,
     )
