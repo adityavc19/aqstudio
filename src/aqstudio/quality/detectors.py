@@ -27,7 +27,7 @@ def _run_flags(
 ) -> list[QualityFlag]:
     """Flag runs of identical non-missing values; restrict to value `only` when given."""
     flags: list[QualityFlag] = []
-    for (station, _), items in series.items():
+    for (station, pollutant), items in series.items():
         for value, group in groupby(items, key=lambda r: r.value):
             run = list(group)
             if value is None or len(run) < min_run or (only is not None and value != only):
@@ -36,6 +36,7 @@ def _run_flags(
                 QualityFlag(
                     kind=kind,
                     station_id=station,
+                    pollutant=pollutant,
                     start=run[0].timestamp,
                     end=run[-1].timestamp,
                     severity=severity,
@@ -68,7 +69,7 @@ def _is_ceiling(readings: list[Reading], flag: QualityFlag) -> bool:
 def detect_gaps(readings: list[Reading]) -> list[QualityFlag]:
     """Flag silences longer than the configured gap between valid readings."""
     flags: list[QualityFlag] = []
-    for (station, _), items in _by_series(readings).items():
+    for (station, pollutant), items in _by_series(readings).items():
         valid = [r for r in items if r.value is not None]
         for before, after in zip(valid, valid[1:], strict=False):
             hours = (after.timestamp - before.timestamp).total_seconds() / 3600
@@ -77,6 +78,7 @@ def detect_gaps(readings: list[Reading]) -> list[QualityFlag]:
                     QualityFlag(
                         kind=FlagKind.GAP,
                         station_id=station,
+                        pollutant=pollutant,
                         start=before.timestamp,
                         end=after.timestamp,
                         severity=Severity.WARNING,
@@ -92,12 +94,31 @@ def detect_empty_columns(readings: list[Reading]) -> list[QualityFlag]:
         QualityFlag(
             kind=FlagKind.EMPTY_COLUMN,
             station_id=station,
+            pollutant=pollutant,
             severity=Severity.INFO,
             evidence_refs=[items[0].source_row_ref],
         )
-        for (station, _), items in _by_series(readings).items()
+        for (station, pollutant), items in _by_series(readings).items()
         if all(r.value is None for r in items)
     ]
+
+
+def detect_unit_mismatch(readings: list[Reading]) -> list[QualityFlag]:
+    """Flag CO reported in micrograms; CPCB expects mg/m3 and the AQI would be wrong."""
+    flags: list[QualityFlag] = []
+    for (station, pollutant), items in _by_series(readings).items():
+        unit = items[0].unit.lower().replace("\u00b5", "u")
+        if pollutant.upper() == "CO" and unit.startswith("ug"):
+            flags.append(
+                QualityFlag(
+                    kind=FlagKind.UNIT_MISMATCH,
+                    station_id=station,
+                    pollutant=pollutant,
+                    severity=Severity.CRITICAL,
+                    evidence_refs=[items[0].source_row_ref],
+                )
+            )
+    return flags
 
 
 def detect_all(readings: list[Reading]) -> list[QualityFlag]:
@@ -107,4 +128,5 @@ def detect_all(readings: list[Reading]) -> list[QualityFlag]:
         *detect_stuck(readings),
         *detect_gaps(readings),
         *detect_empty_columns(readings),
+        *detect_unit_mismatch(readings),
     ]

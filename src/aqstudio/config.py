@@ -29,3 +29,34 @@ CEILING_MIN_RUN = 4  # consecutive sentinel readings before it is treated as a f
 STUCK_MIN_RUN = 8  # identical consecutive readings before a sensor is treated as stuck.
 GAP_MIN_HOURS = 24.0  # silence between valid readings that counts as a gap.
 NON_POLLUTANT_COLUMNS = frozenset({"station id", "state", "city", "station name", "timestamp"})
+
+# CPCB National AQI (India). Concentration edges map to index edges INDEX_EDGES; the Severe
+# band tops out at edge5 + (edge5 - edge4), the CPCB convention that reproduces the published
+# PM2.5 worked example (150 ug/m3 -> 323). Units: ug/m3, except CO in mg/m3.
+# SOURCE: CPCB AQI health breakpoints as reproduced at
+# https://ies.gov.in/arthapedia/concept/national-air-quality-index .
+# NOT YET VERIFIED against the CPCB PDF itself; verify before relying on these in production.
+INDEX_EDGES = (0, 50, 100, 200, 300, 400, 500)
+AQI_BREAKPOINTS: dict[str, tuple[float, float, float, float, float, float]] = {
+    "PM10": (0, 50, 100, 250, 350, 430),
+    "PM2.5": (0, 30, 60, 90, 120, 250),
+    "NO2": (0, 40, 80, 180, 280, 400),
+    "O3": (0, 50, 100, 168, 208, 748),
+    "CO": (0, 1, 2, 10, 17, 34),
+    "SO2": (0, 40, 80, 380, 800, 1600),
+    "NH3": (0, 200, 400, 800, 1200, 1800),
+}
+AQI_CATEGORIES = (
+    (50, "Good"),
+    (100, "Satisfactory"),
+    (200, "Moderate"),
+    (300, "Poor"),
+    (400, "Very Poor"),
+    (500, "Severe"),
+)
+PARTICULATES = frozenset({"PM10", "PM2.5"})
+POLLUTANT_ALIASES = {"OZONE": "O3", "PM25": "PM2.5", "PM2_5": "PM2.5"}
+MIN_AQI_POLLUTANTS = 3  # SOURCE: same page; one of them must be PM2.5 or PM10.
+MIN_DAY_HOURS = 16  # SOURCE: same page; minimum hours of data for a sub-index.
+MIN_8H_HOURS = 6  # ASSUMPTION: valid hours needed inside an 8-hour window for CO and O3.
+EIGHT_HOUR_POLLUTANTS = frozenset({"CO", "O3"})

@@ -67,6 +67,7 @@ class QualityFlag(BaseModel):
 
     kind: FlagKind
     station_id: str
+    pollutant: str | None = None
     start: datetime | None = None
     end: datetime | None = None
     severity: Severity
@@ -85,13 +86,34 @@ class Fact(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
 
 
-class Claim(BaseModel):
-    """An LLM statement that must cite fact ids."""
+class QuotedValue(BaseModel):
+    """A number a claim quotes, tied to the fact field it must match."""
+
+    fact_id: str
+    field: str
+    value: float
+
+
+class ClaimDraft(BaseModel):
+    """A claim as returned by the LLM, before verification."""
 
     text: str
     cited_fact_ids: list[str]
     confidence: float = Field(ge=0, le=1)
+    quoted_values: list[QuotedValue] = Field(default_factory=list)
+
+
+class InterpretationOutput(BaseModel):
+    """Schema the LLM must return."""
+
+    claims: list[ClaimDraft]
+
+
+class Claim(ClaimDraft):
+    """A claim after verification, with the reasons it failed if it did."""
+
     status: ClaimStatus = ClaimStatus.UNVERIFIED
+    notes: list[str] = Field(default_factory=list)
 
 
 class Action(BaseModel):

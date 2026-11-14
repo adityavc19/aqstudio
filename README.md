@@ -12,3 +12,9 @@ Upload a messy air-quality table; get a cleaned, quality-flagged, fact-cited bri
     uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest
 
 Full run, deploy and env-var docs are completed in Phase 5.
+
+## Run
+
+    uv run uvicorn aqstudio.web.main:app
+
+Needs `ANTHROPIC_API_KEY` in `.env`; without it the app reports that the AI service is not configured.
