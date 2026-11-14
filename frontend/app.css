@@ -226,3 +226,8 @@ h3 { font-size: 1.125rem; }
 .summary h1 { font-size: clamp(1.8rem, 1.2rem + 2vw, 2.5rem); }
 h1, h2, h3 { text-wrap: balance; }
 p, li { text-wrap: pretty; }
+/* FINDING-006: sections are layout, not a stack of boxes */
+details.section { background: transparent; border: none; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; margin: 0; padding: 0.5rem 0 0.75rem; }
+details.section > summary { padding: 1rem 0 0.75rem; }
+details.section > .body { padding: 0 0 0.5rem; }
+details.section table, details.section .map { background: var(--card); }
