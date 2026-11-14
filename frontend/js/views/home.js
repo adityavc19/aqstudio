@@ -85,7 +85,7 @@ async function loadRecent(section) {
         h("div", { class: "small muted" }, item.label),
         h("div", {}, h("b", {}, item.status_line || "Processing or failed")),
         h("div", { class: "chips" }, item.worst_category ? categoryBadge(item.worst_category) : null, item.unreliable_count ? h("span", { class: "badge g-unreliable" }, `${item.unreliable_count} unreliable`) : null),
-        h("div", { class: "chips" }, h("a", { class: "btn secondary small-btn", href: `#/brief/${item.id}` }, "Open"), older ? h("a", { class: "btn secondary small-btn", href: `#/brief/${item.id}?against=${older.id}` }, "Compare with previous") : null));
+        h("div", { class: "chips" }, h("a", { class: "btn secondary small-btn", href: `#/brief/${item.id}` }, "Open"), item.share_id ? h("a", { class: "btn secondary small-btn", href: `#/c/${item.share_id}` }, "Citizen view") : null, older ? h("a", { class: "btn secondary small-btn", href: `#/brief/${item.id}?against=${older.id}` }, "Compare with previous") : null));
     })));
   } catch (err) {
     section.replaceChildren(heading, errorBox(`Could not load recent briefs. ${err.message}`));

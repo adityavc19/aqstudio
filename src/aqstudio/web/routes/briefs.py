@@ -72,6 +72,7 @@ def _run_brief(
             on_stage=lambda stage: deps.briefs.set_stage(brief_id, stage),
         )
         deps.briefs.save_ready(brief, evidence, brief.summary or summarize(brief.stations))
+        deps.shares.share(brief.id)  # the citizen view exists as soon as the brief does
     except LLMError as exc:
         deps.briefs.save_failed(brief_id, ErrorBody(code="llm_unavailable", message=str(exc)))
     except IngestError as exc:
@@ -183,6 +184,7 @@ def list_briefs(request: Request, deps: Annotated[Deps, Depends(get_deps)]) -> l
             status_line=b.status_line,
             worst_category=b.worst_category,
             unreliable_count=b.unreliable_count,
+            share_id=deps.shares.share_id_for(b.id),
         )
         for b in deps.briefs.list_for_session(sid)
     ]
@@ -221,6 +223,7 @@ def get_brief(brief_id: str, deps: Annotated[Deps, Depends(get_deps)]) -> BriefS
         stage=stored.stage,
         brief=stored.brief,
         error=stored.error,
+        share_id=deps.shares.share_id_for(brief_id) if stored.brief else None,
     )
 
 

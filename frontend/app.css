@@ -106,7 +106,10 @@ th { background: var(--soft); }
 .summary h1 { font-size: 2rem; }
 .dist { display: flex; height: 1.6rem; border-radius: 6px; overflow: hidden; margin: 0.6rem 0 0.2rem; border: 1px solid var(--line); }
 .dist-seg { display: grid; place-items: center; font-size: 0.8rem; border: none; border-right: 2px solid #fff; }
-.share { margin-top: 0.75rem; }
+.view-toggle { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; margin: 0 0 1rem; padding: 0.25rem; background: var(--soft); border: 1px solid var(--line); border-radius: 999px; }
+.view-toggle .seg { padding: 0.4rem 1rem; border-radius: 999px; font-weight: 600; text-decoration: none; min-height: 36px; display: inline-flex; align-items: center; }
+.view-toggle .seg.on { background: var(--accent); color: #fff; }
+.view-toggle button.link { margin: 0 0.5rem; }
 nav.toc { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0 0 1rem; position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 0.5rem 0; }
 nav.toc a { padding: 0.25rem 0.75rem; border-radius: 999px; background: var(--card); border: 1px solid var(--line); text-decoration: none; font-size: 0.875rem; font-weight: 600; }
 details.section { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); margin: 0 0 1rem; scroll-margin-top: 4rem; }

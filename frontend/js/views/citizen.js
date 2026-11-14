@@ -1,5 +1,5 @@
 import { api, categoryBadge, errorBox, gradeBadge, h, num, radioTabs, show, when } from "../dom.js";
-import { LANGUAGES } from "./brief.js";
+import { LANGUAGES, viewToggle } from "./brief.js";
 
 const GROUPS = { everyone: "Everyone", children: "Children", older_adults: "Older adults", sensitive_groups: "Sensitive groups", data: "About the data" };
 
@@ -58,6 +58,7 @@ export async function citizenView(shareId) {
   }
 
   show("Air near you",
+    viewToggle("citizen", sessionStorage.getItem(`aq.share.${shareId}`), shareId),
     h("p", { class: "badge c-na notice" }, page.notice),
     h("h1", {}, "Air near you"),
     h("p", { class: "lede" }, `${page.status_line}. Data for ${page.period || "the uploaded period"}, published ${when(page.created_at)}.`),

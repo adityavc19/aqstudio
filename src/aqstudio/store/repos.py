@@ -212,6 +212,12 @@ class ShareRepo:
             )
         return share_id
 
+    def share_id_for(self, brief_id: str) -> str | None:
+        """The existing share id of a brief, without creating one."""
+        with self._db.connect() as conn:
+            row = conn.execute("SELECT id FROM shares WHERE brief_id = ?", (brief_id,)).fetchone()
+        return str(row[0]) if row else None
+
     def brief_id(self, share_id: str) -> str | None:
         """The brief behind a share id."""
         with self._db.connect() as conn:

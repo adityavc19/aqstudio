@@ -35,7 +35,7 @@ export async function briefView(id, against) {
     if (state.status === "failed") {
       return show("Brief failed", h("h1", {}, "No brief was produced"), errorBox(state.error.message, state.error.code), h("p", { class: "muted" }, "Your data was not changed and nothing was made up to fill the gap."), h("a", { class: "btn", href: "#/" }, "Back to home"));
     }
-    return render(state.brief, against);
+    return render(state.brief, against, state.share_id);
   }
 }
 
@@ -221,36 +221,48 @@ function advisory(brief) {
   return section("sec-advisory", "Advisory and briefing note", false, h("p", { class: "muted small" }, "The internal note uses only verified findings and actions. The citizen advisory is written by the AI and every section is checked; translations are machine-made and their numbers are checked."), form, out);
 }
 
-function shareBox(brief) {
-  const out = h("div", { role: "status" });
-  const button = h("button", {
-    type: "button",
-    class: "secondary",
-    onclick: async () => {
-      try {
-        const res = await postJson(`/briefs/${brief.id}/share`, {});
-        const link = `${location.origin}${res.url}`;
-        out.replaceChildren(h("p", { class: "small" }, "Citizen page: ", h("a", { href: res.url }, link), " ", h("button", { type: "button", class: "link", onclick: () => navigator.clipboard && navigator.clipboard.writeText(link) }, "Copy link")));
-      } catch (err) {
-        out.replaceChildren(errorBox(err.message, err.code));
-      }
-    },
-  }, "Create citizen page");
-  return h("div", { class: "share" }, button, out);
+export function viewToggle(current, briefId, shareId) {
+  // Operator and citizen views of the same brief; switching is navigation, not a setup step.
+  if (shareId) sessionStorage.setItem(`aq.share.${shareId}`, briefId);
+  const link = (key, label, href) =>
+    key === current
+      ? h("span", { class: "seg on", "aria-current": "page" }, label)
+      : h("a", { class: "seg", href }, label);
+  const copy = shareId
+    ? h("button", { type: "button", class: "link small", onclick: (e) => {
+        navigator.clipboard?.writeText(`${location.origin}/#/c/${shareId}`);
+        e.currentTarget.textContent = "Citizen link copied";
+      } }, "Copy citizen link")
+    : null;
+  return h("nav", { class: "view-toggle", "aria-label": "View" },
+    briefId ? link("operator", "Operator view", `#/brief/${briefId}`) : null,
+    shareId ? link("citizen", "Citizen view", `#/c/${shareId}`) : null,
+    copy);
 }
 
-function render(brief, against) {
+async function ensureShare(brief, shareId) {
+  // Briefs made before links were automatic get one on first view.
+  if (shareId) return shareId;
+  try {
+    return (await postJson(`/briefs/${brief.id}/share`, {})).share_id;
+  } catch {
+    return null;
+  }
+}
+
+async function render(brief, against, shareId) {
+  shareId = await ensureShare(brief, shareId);
   const unsure = unsureAbout(brief);
   const compareId = against || brief.previous_id;
   const changedHolder = h("div");
   const toc = [["sec-claims", "What happened"], ["sec-actions", "What to do"], ["sec-patterns", "Patterns"], ["sec-where", "Where"], ...(compareId ? [["sec-changed", "What changed"]] : []), ["sec-quality", "Data quality"], ["sec-advisory", "Advisory"]];
   show("Brief",
+    viewToggle("operator", brief.id, shareId),
     h("section", { class: "summary card" },
       h("p", { class: "small muted" }, `${PERSONAS[brief.persona] || brief.persona} · created ${when(brief.created_at)}${brief.context ? ` · ${brief.context}` : ""}`),
       h("h1", {}, brief.summary ? brief.summary.status_line : "Air quality brief"),
       distribution(brief.stations),
-      unsure.length ? h("p", { class: "note" }, h("b", {}, "Unsure about: "), unsure.join("; "), ".") : null,
-      shareBox(brief)),
+      unsure.length ? h("p", { class: "note" }, h("b", {}, "Unsure about: "), unsure.join("; "), ".") : null),
     h("nav", { class: "toc", "aria-label": "In this brief" }, toc.map(([id, label]) => h("a", { href: `#${id}`, onclick: (e) => { e.preventDefault(); const el = document.getElementById(id); if (el) { el.open = true; el.scrollIntoView({ block: "start" }); el.querySelector("summary").focus(); } } }, label))),
     claims(brief), actions(brief), patterns(brief), where(brief), changedHolder, quality(brief), advisory(brief),
     h("div", { class: "actions" }, h("a", { class: "btn secondary", href: "#/" }, "Add more data")));

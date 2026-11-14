@@ -447,6 +447,7 @@ class BriefState(BaseModel):
     stage: str | None = None
     brief: Brief | None = None
     error: ErrorBody | None = None
+    share_id: str | None = None  # citizen view link, created automatically when ready
 
 
 class BriefListItem(BaseModel):
@@ -459,6 +460,7 @@ class BriefListItem(BaseModel):
     status_line: str | None = None
     worst_category: str | None = None
     unreliable_count: int | None = None
+    share_id: str | None = None
 
 
 class EvidenceResponse(BaseModel):

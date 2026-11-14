@@ -34,3 +34,13 @@ def test_share_guards(settings: Settings) -> None:
     stranger = TestClient(create_app(settings, FakeLLM()))
     assert stranger.post(f"/api/briefs/{brief_id}/share").status_code == 403
     assert stranger.get("/api/share/not-a-real-link").status_code == 404
+
+
+def test_citizen_view_exists_automatically_when_a_brief_is_ready(settings: Settings) -> None:
+    owner = TestClient(create_app(settings, FakeLLM()))
+    brief_id = _brief(owner)
+    state = owner.get(f"/api/briefs/{brief_id}").json()
+    assert state["share_id"] and owner.get(f"/api/share/{state['share_id']}").status_code == 200
+    [item] = owner.get("/api/briefs").json()
+    assert item["share_id"] == state["share_id"]
+    assert owner.post(f"/api/briefs/{brief_id}/share").json()["share_id"] == state["share_id"]
