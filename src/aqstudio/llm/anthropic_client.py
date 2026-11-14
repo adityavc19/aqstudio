@@ -10,8 +10,6 @@ from aqstudio.schemas import (
     Fact,
     InterpretationOutput,
     Persona,
-    QualityFlag,
-    StationReliability,
 )
 
 _TOOL = "report_claims"
@@ -26,15 +24,10 @@ class AnthropicClient:
         self._model = model
 
     def interpret_facts(
-        self,
-        facts: list[Fact],
-        flags: list[QualityFlag],
-        reliability: list[StationReliability],
-        persona: Persona,
-        context: str | None,
+        self, facts: list[Fact], persona: Persona, context: str | None
     ) -> list[ClaimDraft]:
         """Ask Claude for cited claims about the facts."""
-        prompt = build_user_prompt(facts, flags, reliability, persona, context)
+        prompt = build_user_prompt(facts, persona, context)
         return interpret_with_retry(prompt, self._call)
 
     def _call(self, prompt: str) -> object:

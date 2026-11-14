@@ -5,9 +5,14 @@ import pandas as pd
 from aqstudio.config import (
     IST_OFFSET_MINUTES,
     LOCAL_TZ,
+    MAX_ID_CHARS,
+    MAX_STATIONS,
+    MAX_UNPARSEABLE_TS_FRACTION,
     MISSING_TOKENS,
     POLLUTANT_ALIASES,
 )
+from aqstudio.ingest.errors import IngestError
+from aqstudio.quality.units import normalize_unit
 from aqstudio.schemas import CleanResult, ColumnMapping, LedgerEntry, RawTable, Reading
 
 _TZ_SUFFIX = r"(?:Z|[+-]\d{2}:?\d{2})$"
@@ -25,21 +30,48 @@ def _column(mapping: list[ColumnMapping], meaning: str) -> str:
 
 
 def clean_long(
-    table: RawTable, mapping: list[ColumnMapping], naive_is_ist: bool = False
+    table: RawTable,
+    mapping: list[ColumnMapping],
+    naive_is_ist: bool = False,
+    day_first: bool | None = None,
 ) -> CleanResult:
-    """Tidy a long table: drop non-timestamp rows, convert to IST, null bad values."""
+    """Tidy a long table: drop non-timestamp rows, convert to IST, null bad values.
+
+    day_first=None accepts ISO timestamps only; True/False also accepts other formats read
+    day-first or month-first.
+    """
     id_col = _column(mapping, "station_id")
     ts_col = _column(mapping, "timestamp")
     pollutants = {m.column: m for m in mapping if m.meaning == "pollutant" and m.pollutant}
     width = len(table.columns)
     frame = pd.DataFrame([(r + [""] * width)[:width] for r in table.rows], columns=table.columns)
     frame["_row"] = range(2, len(frame) + 2)  # 1-based, header is row 1
+    if frame[id_col].str.len().max() > MAX_ID_CHARS:
+        raise IngestError(f"Station ids longer than {MAX_ID_CHARS} characters are not accepted.")
+    if frame[id_col].nunique() > MAX_STATIONS:
+        raise IngestError(f"More than {MAX_STATIONS} stations in one upload.")
 
     ledger: list[LedgerEntry] = []
     raw_ts = frame[ts_col].str.strip()
     # Fixed ISO format: letting pandas infer from row 1 breaks when it is a year divider.
     stamps = pd.to_datetime(raw_ts, utc=True, errors="coerce", format="ISO8601")
-    stamps = stamps.where(~raw_ts.str.fullmatch(r"\d{4}"))
+    divider = raw_ts.str.fullmatch(r"\d{4}")
+    if day_first is not None:
+        retry = stamps.isna() & ~divider & (raw_ts != "")
+        if retry.any():
+            parsed = pd.to_datetime(
+                raw_ts[retry], utc=True, errors="coerce", format="mixed", dayfirst=day_first
+            )
+            stamps = stamps.where(~retry, parsed)
+    stamps = stamps.where(~divider)
+    unreadable = stamps.isna() & ~divider
+    if unreadable.mean() > MAX_UNPARSEABLE_TS_FRACTION:
+        sample = raw_ts[unreadable].iloc[0]
+        raise IngestError(
+            f"Timestamps could not be read in {unreadable.mean():.0%} of rows (for example "
+            f"'{sample}'). Check the date format.",
+            "invalid_timestamps",
+        )
     if naive_is_ist:
         naive = ~raw_ts.str.contains(_TZ_SUFFIX, regex=True)
         stamps = stamps.where(~naive, stamps - pd.Timedelta(minutes=IST_OFFSET_MINUTES))
@@ -62,6 +94,17 @@ def clean_long(
             after=LOCAL_TZ,
             reason="Hour-of-day and daily statistics must use local time.",
         )
+    )
+    ledger.extend(
+        LedgerEntry(
+            row_ref=f"col:{m.column}",
+            rule="normalize_unit",
+            before=m.unit,
+            after=normalize_unit(m.unit or ""),
+            reason="Unit spelling normalised; values are not converted.",
+        )
+        for m in pollutants.values()
+        if m.unit and normalize_unit(m.unit) != m.unit
     )
     ledger.extend(
         LedgerEntry(
@@ -99,10 +142,10 @@ def clean_long(
     )
 
     names = {h: canonical_pollutant(m.pollutant or h) for h, m in pollutants.items()}
-    units = {h: m.unit or "unknown" for h, m in pollutants.items()}
+    units = {h: normalize_unit(m.unit) if m.unit else "unknown" for h, m in pollutants.items()}
     long = long.assign(_value=numeric).sort_values(["header", id_col, "_ts"])
     readings = [
-        Reading(
+        Reading.model_construct(  # inputs are already validated above; skips per-row validation
             station_id=str(station),
             ts=ts.to_pydatetime(),
             pollutant=names[header],

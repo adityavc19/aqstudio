@@ -4,11 +4,15 @@ from collections import defaultdict
 from itertools import groupby
 
 from aqstudio.config import (
+    CEILING_MIN_HOURS,
     CEILING_MIN_RUN,
     CEILING_SENTINEL,
+    EXPECTED_UNITS,
     GAP_MIN_HOURS,
     PLAUSIBLE_RANGES,
+    STUCK_MIN_HOURS,
     STUCK_MIN_RUN,
+    ZERO_RUN_OK,
 )
 from aqstudio.schemas import FlagKind, QualityFlag, Reading, Severity
 
@@ -47,6 +51,11 @@ def _value_runs(series: _Series) -> list[tuple[float, list[Reading]]]:
     return runs
 
 
+def _hours(run: list[Reading]) -> float:
+    """Duration of a run of readings in hours."""
+    return (run[-1].ts - run[0].ts).total_seconds() / 3600
+
+
 def detect_ceiling(readings: list[Reading]) -> list[QualityFlag]:
     """Flag long runs of the sentinel ceiling value as probable sensor faults."""
     return [
@@ -58,7 +67,9 @@ def detect_ceiling(readings: list[Reading]) -> list[QualityFlag]:
             run,
         )
         for value, run in _value_runs(_by_series(readings))
-        if value == CEILING_SENTINEL and len(run) >= CEILING_MIN_RUN
+        if value == CEILING_SENTINEL
+        and len(run) >= CEILING_MIN_RUN
+        and _hours(run) >= CEILING_MIN_HOURS
     ]
 
 
@@ -72,26 +83,50 @@ def detect_stuck(readings: list[Reading]) -> list[QualityFlag]:
             run,
         )
         for value, run in _value_runs(_by_series(readings))
-        if value != CEILING_SENTINEL and len(run) >= STUCK_MIN_RUN
+        if value != CEILING_SENTINEL
+        and len(run) >= STUCK_MIN_RUN
+        and _hours(run) >= STUCK_MIN_HOURS
+        and not (value == 0 and run[0].pollutant in ZERO_RUN_OK)
     ]
 
 
+def _gap(
+    items: list[Reading], start: Reading, end: Reading, hours: float, kind: str
+) -> QualityFlag:
+    """A gap flag between two readings (or between the upload edge and a reading)."""
+    return QualityFlag(
+        kind=FlagKind.GAP,
+        station_id=items[0].station_id,
+        pollutant=items[0].pollutant,
+        start=start.ts,
+        end=end.ts,
+        severity=Severity.WARN,
+        detail=f"No valid data for {hours:.0f} hours ({kind}).",
+        row_refs=[start.row_ref, end.row_ref],
+    )
+
+
 def detect_gaps(readings: list[Reading]) -> list[QualityFlag]:
-    """Flag silences longer than the configured gap between valid readings."""
+    """Flag silences over the configured gap, also at the start and end of the upload."""
+    if not readings:
+        return []
+    first_row = min(readings, key=lambda r: r.ts)
+    last_row = max(readings, key=lambda r: r.ts)
     flags: list[QualityFlag] = []
     for items in _by_series(readings).values():
         valid = [r for r in items if r.value is not None]
+        if not valid:
+            continue
+        lead = (valid[0].ts - first_row.ts).total_seconds() / 3600
+        if lead > GAP_MIN_HOURS:
+            flags.append(_gap(items, first_row, valid[0], lead, "at the start"))
         for before, after in zip(valid, valid[1:], strict=False):
             hours = (after.ts - before.ts).total_seconds() / 3600
             if hours > GAP_MIN_HOURS:
-                flags.append(
-                    _flag(
-                        FlagKind.GAP,
-                        Severity.WARN,
-                        f"No valid data for {hours:.0f} hours.",
-                        [before, after],
-                    )
-                )
+                flags.append(_gap(items, before, after, hours, "between readings"))
+        trail = (last_row.ts - valid[-1].ts).total_seconds() / 3600
+        if trail > GAP_MIN_HOURS:
+            flags.append(_gap(items, valid[-1], last_row, trail, "at the end"))
     return flags
 
 
@@ -129,16 +164,19 @@ def detect_implausible(readings: list[Reading]) -> list[QualityFlag]:
 
 
 def detect_unit_mismatch(readings: list[Reading]) -> list[QualityFlag]:
-    """Flag CO reported in micrograms; CPCB expects mg/m3 and the AQI would be wrong."""
+    """Flag series whose unit differs from CPCB's; they are excluded, never converted."""
     return [
         _flag(
             FlagKind.UNIT_MISMATCH,
             Severity.CRITICAL,
-            "CO is labelled in micrograms; CPCB uses mg/m3. Excluded from AQI.",
+            f"{pollutant} is labelled '{items[0].unit}' but CPCB uses "
+            f"'{EXPECTED_UNITS[pollutant]}'. Excluded from statistics and AQI; not converted.",
             items,
         )
         for (_, pollutant), items in _by_series(readings).items()
-        if pollutant == "CO" and items[0].unit.lower().replace("µ", "u").startswith("ug")
+        if pollutant in EXPECTED_UNITS
+        and items[0].unit != "unknown"
+        and items[0].unit != EXPECTED_UNITS[pollutant]
     ]
 
 

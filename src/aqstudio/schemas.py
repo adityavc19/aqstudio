@@ -269,6 +269,7 @@ class Brief(BaseModel):
     ledger: list[LedgerEntry] = Field(default_factory=list)
     assumptions: list[Assumption] = Field(default_factory=list)
     stations: list[StationInfo] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
     coordinates_source: CoordinatesSource = CoordinatesSource.NONE
     status: BriefStatus
     previous_id: str | None = None

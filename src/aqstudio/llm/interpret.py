@@ -6,39 +6,13 @@ from collections.abc import Callable
 from pydantic import ValidationError
 
 from aqstudio.llm.client import LLMError
-from aqstudio.schemas import (
-    ClaimDraft,
-    Fact,
-    InterpretationOutput,
-    Persona,
-    QualityFlag,
-    StationReliability,
-)
-
-_MAX_FLAGS_SENT = 20
+from aqstudio.schemas import ClaimDraft, Fact, InterpretationOutput, Persona
 
 
-def build_user_prompt(
-    facts: list[Fact],
-    flags: list[QualityFlag],
-    reliability: list[StationReliability],
-    persona: Persona,
-    context: str | None,
-) -> str:
-    """Aggregates only (never raw rows), with untrusted content in delimited blocks."""
+def build_user_prompt(facts: list[Fact], persona: Persona, context: str | None) -> str:
+    """Aggregated facts only (never raw rows), with untrusted content in delimited blocks."""
     payload = json.dumps(
-        {
-            "facts": [f.model_dump(exclude={"evidence", "spatial_note"}) for f in facts],
-            "station_reliability": [r.model_dump() for r in reliability],
-            "quality_flags": [
-                f.model_dump(
-                    include={"id", "kind", "station_id", "pollutant", "severity", "detail"}
-                )
-                for f in flags[:_MAX_FLAGS_SENT]
-            ],
-            "quality_flag_total": len(flags),
-        },
-        default=str,
+        [f.model_dump(exclude={"evidence", "spatial_note"}) for f in facts], default=str
     )
     prompt = f"Audience: {persona.value}.\n<facts>\n{payload}\n</facts>"
     if context:

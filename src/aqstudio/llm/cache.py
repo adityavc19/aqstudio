@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import time
 
 from aqstudio.llm.client import LLMClient
 from aqstudio.llm.prompts.interpret import PROMPT_VERSION
@@ -9,8 +10,6 @@ from aqstudio.schemas import (
     ClaimDraft,
     Fact,
     Persona,
-    QualityFlag,
-    StationReliability,
 )
 from aqstudio.store.db import Database
 
@@ -25,19 +24,12 @@ class CachedLLMClient:
         self._model = model
 
     def interpret_facts(
-        self,
-        facts: list[Fact],
-        flags: list[QualityFlag],
-        reliability: list[StationReliability],
-        persona: Persona,
-        context: str | None,
+        self, facts: list[Fact], persona: Persona, context: str | None
     ) -> list[ClaimDraft]:
         """Return cached claims when the same inputs were interpreted before."""
         material = json.dumps(
             {
                 "facts": [f.model_dump(mode="json") for f in facts],
-                "flags": [f.model_dump(mode="json") for f in flags],
-                "reliability": [r.model_dump(mode="json") for r in reliability],
                 "persona": persona.value,
                 "context": context,
                 "prompt": PROMPT_VERSION,
@@ -50,10 +42,10 @@ class CachedLLMClient:
             row = conn.execute("SELECT value FROM llm_cache WHERE key = ?", (key,)).fetchone()
         if row is not None:
             return [ClaimDraft.model_validate(c) for c in json.loads(row[0])]
-        claims = self._inner.interpret_facts(facts, flags, reliability, persona, context)
+        claims = self._inner.interpret_facts(facts, persona, context)
         with self._db.connect() as conn:
             conn.execute(
-                "INSERT OR REPLACE INTO llm_cache (key, value) VALUES (?, ?)",
-                (key, json.dumps([c.model_dump(mode="json") for c in claims])),
+                "INSERT OR REPLACE INTO llm_cache (key, value, created_at) VALUES (?, ?, ?)",
+                (key, json.dumps([c.model_dump(mode="json") for c in claims]), time.time()),
             )
         return claims

@@ -25,8 +25,8 @@ class CountingLLM:
 def test_identical_inputs_hit_cache_and_changed_inputs_do_not(tmp_path: Path) -> None:
     inner = CountingLLM()
     client = CachedLLMClient(inner, Database(str(tmp_path / "c.db")), "model-x")  # type: ignore[arg-type]
-    first = client.interpret_facts([FACT], [], [], Persona.SCHOOL, None)
-    again = client.interpret_facts([FACT], [], [], Persona.SCHOOL, None)
+    first = client.interpret_facts([FACT], Persona.SCHOOL, None)
+    again = client.interpret_facts([FACT], Persona.SCHOOL, None)
     assert inner.calls == 1 and first == again
-    client.interpret_facts([FACT], [], [], Persona.SCHOOL, "different context")
+    client.interpret_facts([FACT], Persona.SCHOOL, "different context")
     assert inner.calls == 2

@@ -134,8 +134,21 @@ class BriefRepo:
         """Store a failure so the client can show an honest error."""
         with self._db.connect() as conn:
             conn.execute(
-                "UPDATE briefs SET status = 'failed', stage = NULL, error_json = ? WHERE id = ?",
+                "UPDATE briefs SET status = 'failed', stage = NULL, error_json = ?"
+                " WHERE id = ? AND status = 'processing'",
                 (error.model_dump_json(), brief_id),
+            )
+
+    def fail_orphaned(self) -> None:
+        """At startup, mark briefs left processing by a previous run as failed."""
+        error = ErrorBody(
+            code="interrupted", message="The server restarted while building this brief. Try again."
+        )
+        with self._db.connect() as conn:
+            conn.execute(
+                "UPDATE briefs SET status = 'failed', stage = NULL, error_json = ?"
+                " WHERE status = 'processing'",
+                (error.model_dump_json(),),
             )
 
     def get(self, brief_id: str) -> StoredBrief | None:

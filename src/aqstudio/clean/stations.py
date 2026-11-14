@@ -2,6 +2,7 @@
 
 import pandas as pd
 
+from aqstudio.config import MAX_NAME_CHARS
 from aqstudio.geo import check_coordinates
 from aqstudio.schemas import ColumnMapping, RawTable, StationLocation
 
@@ -22,7 +23,7 @@ def extract_stations(
         name = station_id
         if "station_name" in cols:
             named = grp[cols["station_name"]].str.strip()
-            name = next((n for n in named if n), station_id)
+            name = next((n for n in named if n), station_id)[:MAX_NAME_CHARS]
         if not has_coords:
             stations.append(
                 StationLocation(

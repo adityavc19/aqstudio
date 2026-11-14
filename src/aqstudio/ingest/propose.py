@@ -2,8 +2,15 @@
 
 import re
 
+import pandas as pd
+
 from aqstudio.clean.stations import extract_stations
-from aqstudio.config import LAT_COLUMNS, LON_COLUMNS, NON_POLLUTANT_COLUMNS
+from aqstudio.config import (
+    LAT_COLUMNS,
+    LON_COLUMNS,
+    MAX_POLLUTANT_CHARS,
+    NON_POLLUTANT_COLUMNS,
+)
 from aqstudio.ingest.errors import IngestError
 from aqstudio.schemas import Assumption, ColumnMapping, RawTable
 
@@ -70,6 +77,21 @@ def propose_mapping(table: RawTable) -> tuple[list[ColumnMapping], list[Assumpti
                 confidence=0.5,
             )
         )
+    ts_column = next(m.column for m in mapping if m.meaning == "timestamp")
+    sample = pd.Series([r[table.columns.index(ts_column)] for r in table.rows[:50] if r], dtype=str)
+    sample = sample[~sample.str.fullmatch(r"\s*\d{4}\s*") & (sample.str.strip() != "")]
+    iso = pd.to_datetime(sample, utc=True, errors="coerce", format="ISO8601")
+    if iso.isna().any():
+        assumptions.append(
+            Assumption(
+                id="date_order",
+                kind="date_order",
+                description="Timestamps are not ISO formatted. They are read day-first "
+                "(DD-MM-YYYY, the Indian convention). Override to read them month-first.",
+                proposed="day_first",
+                confidence=0.6,
+            )
+        )
     swapped = [
         loc.station_id for loc in extract_stations(table, mapping) if loc.problem == "swapped"
     ]
@@ -99,6 +121,9 @@ def validate_mapping(table: RawTable, mapping: list[ColumnMapping]) -> None:
     for meaning in ("station_id", "timestamp"):
         if sum(m.meaning == meaning for m in mapping) != 1:
             raise IngestError(f"Mapping needs exactly one '{meaning}' column.", "invalid_mapping")
+    too_long = [m.pollutant for m in mapping if len(m.pollutant or "") > MAX_POLLUTANT_CHARS]
+    if too_long:
+        raise IngestError("Pollutant names must be short.", "invalid_mapping")
     lat_count = sum(m.meaning == "latitude" for m in mapping)
     lon_count = sum(m.meaning == "longitude" for m in mapping)
     if lat_count != lon_count or lat_count > 1:

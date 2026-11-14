@@ -8,8 +8,10 @@ from datetime import UTC, datetime
 
 from aqstudio.clean.normalize import clean_long
 from aqstudio.clean.stations import extract_stations
-from aqstudio.config import LEDGER_SAMPLE_SIZE
-from aqstudio.facts.build_facts import build_facts
+from aqstudio.config import LEDGER_SAMPLE_SIZE, MAX_FACTS_TO_LLM
+from aqstudio.facts.build_facts import assign_fact_ids, build_facts
+from aqstudio.facts.derived import flag_facts, reliability_facts
+from aqstudio.ingest.errors import IngestError
 from aqstudio.llm.client import LLMClient
 from aqstudio.quality.coords import coordinate_flags
 from aqstudio.quality.detectors import assign_flag_ids, detect_all
@@ -27,6 +29,23 @@ from aqstudio.schemas import (
 from aqstudio.summary import station_infos
 from aqstudio.verify.claims import verify_claims
 
+_CADENCE_ASSUMPTION = Assumption(
+    id="cadence",
+    kind="cadence",
+    description="Readings are one per day: treated as 24-hour averages, AQI computed per day.",
+    proposed="daily",
+    confidence=0.8,
+)
+_PRIORITY = [
+    "hotspot",
+    "station_reliability",
+    "aqi_latest",
+    "aqi_worst",
+    "aqi_insufficient",
+    "quality_flag",
+    "pm_ratio",
+    "pollutant_mean",
+]
 _ROW_REF = re.compile(r"^row(\d+):")
 _FLAG_REF = re.compile(r"^Q\d+$")
 
@@ -46,11 +65,20 @@ def source_rows(table: RawTable, facts: list[Fact]) -> dict[str, dict[str, str]]
     return rows
 
 
+def _priority_facts(facts: list[Fact]) -> list[Fact]:
+    """The facts sent to the model: all of them, or the most important MAX_FACTS_TO_LLM."""
+    if len(facts) <= MAX_FACTS_TO_LLM:
+        return facts
+    ranked = sorted(facts, key=lambda f: _PRIORITY.index(f.kind) if f.kind in _PRIORITY else 99)
+    return ranked[:MAX_FACTS_TO_LLM]
+
+
 def build_brief(
     table: RawTable,
     mapping: list[ColumnMapping],
     assumptions: list[Assumption],
     naive_is_ist: bool,
+    day_first: bool | None,
     swap_station_ids: frozenset[str],
     persona: Persona,
     context: str | None,
@@ -61,15 +89,28 @@ def build_brief(
 ) -> tuple[Brief, dict[str, dict[str, str]]]:
     """Run the full pipeline and return the brief with the source rows its facts cite."""
     on_stage("cleaning")
-    cleaned = clean_long(table, mapping, naive_is_ist)
+    cleaned = clean_long(table, mapping, naive_is_ist, day_first)
     on_stage("quality")
     locations = extract_stations(table, mapping, swap_station_ids)
     flags = assign_flag_ids([*detect_all(cleaned.readings), *coordinate_flags(locations)])
     on_stage("facts")
-    facts = build_facts(cleaned.readings, flags)
-    reliability = station_reliability(facts, flags)
+    base_facts, daily_cadence = build_facts(cleaned.readings, flags)
+    if not base_facts:
+        raise IngestError(
+            "No usable readings remain after cleaning, so there is nothing to brief.", "no_data"
+        )
+    reliability = station_reliability(base_facts, flags)
+    facts = assign_fact_ids(
+        [*base_facts, *reliability_facts(reliability, flags), *flag_facts(flags)]
+    )
+    notes: list[str] = []
+    if daily_cadence:
+        assumptions = [*assumptions, _CADENCE_ASSUMPTION]
+    sent = _priority_facts(facts)
+    if len(sent) < len(facts):
+        notes.append(f"The AI narrated {len(sent)} of {len(facts)} facts (highest priority first).")
     on_stage("interpreting")
-    drafts = llm.interpret_facts(facts, flags, reliability, persona, context)
+    drafts = llm.interpret_facts(sent, persona, context)
     on_stage("verifying")
     claims = verify_claims(drafts, facts)
     brief = Brief(
@@ -86,6 +127,7 @@ def build_brief(
         ledger=cleaned.ledger[:LEDGER_SAMPLE_SIZE],
         assumptions=assumptions,
         stations=station_infos(locations, facts, reliability),
+        notes=notes,
         coordinates_source=(
             CoordinatesSource.UPLOADED
             if any(loc.lat is not None for loc in locations)

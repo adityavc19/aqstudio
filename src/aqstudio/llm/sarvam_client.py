@@ -1,5 +1,8 @@
 """Sarvam-hosted open-weight models through the OpenAI-compatible /v2 chat API."""
 
+import time
+from collections.abc import Callable
+
 import httpx
 
 from aqstudio.config import SARVAM_BASE_URL, SARVAM_MAX_TOKENS, SARVAM_TIMEOUT_S
@@ -11,34 +14,57 @@ from aqstudio.schemas import (
     Fact,
     InterpretationOutput,
     Persona,
-    QualityFlag,
-    StationReliability,
 )
 
 # Models whose docs allow reasoning_effort "none"; thinking tokens otherwise dominate latency.
+_ATTEMPTS = 3
+_RETRYABLE = frozenset({429, 503})
 _REASONING_OFF = frozenset({"sarvam-105b", "deepseekv4.1-flash-1017"})
 
 
 class SarvamClient:
     """Calls a Sarvam-hosted chat model with json_schema structured output."""
 
-    def __init__(self, api_key: str, model: str, http: httpx.Client | None = None) -> None:
-        """Keep the key private; the HTTP client is injectable for tests."""
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        http: httpx.Client | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
+        """Keep the key private; the HTTP client and sleep are injectable for tests."""
+        self._sleep = sleep
         self._key = api_key
         self._model = model
         self._http = http or httpx.Client(timeout=SARVAM_TIMEOUT_S)
 
     def interpret_facts(
-        self,
-        facts: list[Fact],
-        flags: list[QualityFlag],
-        reliability: list[StationReliability],
-        persona: Persona,
-        context: str | None,
+        self, facts: list[Fact], persona: Persona, context: str | None
     ) -> list[ClaimDraft]:
         """Ask the model for cited claims about the facts."""
-        prompt = build_user_prompt(facts, flags, reliability, persona, context)
+        prompt = build_user_prompt(facts, persona, context)
         return interpret_with_retry(prompt, self._call)
+
+    def _post_with_retry(self, body: dict[str, object]) -> httpx.Response:
+        """POST with exponential backoff on rate limits, overload and network errors."""
+        for attempt in range(_ATTEMPTS):
+            last = attempt == _ATTEMPTS - 1
+            try:
+                response = self._http.post(
+                    f"{SARVAM_BASE_URL}/v2/chat/completions",
+                    headers={"Authorization": f"Bearer {self._key}"},
+                    json=body,
+                )
+            except httpx.HTTPError as exc:
+                if last:
+                    raise LLMError(
+                        f"The AI service request failed ({type(exc).__name__})."
+                    ) from exc
+            else:
+                if response.status_code not in _RETRYABLE or last:
+                    return response
+            self._sleep(2.0**attempt)
+        raise LLMError("The AI service request failed.")  # unreachable: the last attempt returns
 
     def _call(self, prompt: str) -> object:
         """One chat completion; returns the raw JSON text for validation."""
@@ -60,14 +86,7 @@ class SarvamClient:
         }
         if self._model in _REASONING_OFF:
             body["reasoning_effort"] = "none"
-        try:
-            response = self._http.post(
-                f"{SARVAM_BASE_URL}/v2/chat/completions",
-                headers={"Authorization": f"Bearer {self._key}"},
-                json=body,
-            )
-        except httpx.HTTPError as exc:
-            raise LLMError(f"The AI service request failed ({type(exc).__name__}).") from exc
+        response = self._post_with_retry(body)
         if response.status_code != 200:
             raise LLMError(f"The AI service request failed (HTTP {response.status_code}).")
         choice = response.json()["choices"][0]

@@ -1,6 +1,7 @@
 """FastAPI app factory: JSON API under /api, optional static frontend at /."""
 
 import secrets
+import time
 from pathlib import Path
 
 import anthropic
@@ -8,7 +9,13 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from aqstudio.config import DAILY_CAP, RATE_LIMIT_PER_HOUR, Settings
+from aqstudio.config import (
+    DAILY_CAP,
+    RATE_LIMIT_PER_HOUR,
+    UPLOAD_DAILY_CAP,
+    UPLOAD_RATE_LIMIT_PER_HOUR,
+    Settings,
+)
 from aqstudio.llm.anthropic_client import AnthropicClient
 from aqstudio.llm.cache import CachedLLMClient
 from aqstudio.llm.client import LLMClient
@@ -53,8 +60,13 @@ def create_app(settings: Settings | None = None, llm: LLMClient | None = None) -
         uploads=UploadRepo(db),
         briefs=BriefRepo(db),
         limiter=UsageLimiter(settings.database_path, RATE_LIMIT_PER_HOUR, DAILY_CAP),
+        upload_limiter=UsageLimiter(
+            settings.database_path, UPLOAD_RATE_LIMIT_PER_HOUR, UPLOAD_DAILY_CAP, scope="upload"
+        ),
         llm=llm if llm is not None else _build_llm(settings, db),
     )
+    db.purge_expired(time.time())
+    app.state.deps.briefs.fail_orphaned()
     secret = settings.session_secret.get_secret_value() or secrets.token_hex(32)
     app.add_middleware(
         SessionMiddleware,

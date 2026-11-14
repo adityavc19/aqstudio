@@ -10,11 +10,22 @@ LOCAL_TZ = "Asia/Kolkata"  # IST, +05:30; all readings are converted to this zon
 IST_OFFSET_MINUTES = 330
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_UPLOAD_ROWS = 200_000
+MAX_UPLOAD_CELLS = 250_000  # rows x columns; keeps parsing time and memory bounded (about 40 s).
+MAX_STATIONS = 100
+MAX_ID_CHARS = 64
+MAX_NAME_CHARS = 100
+MAX_POLLUTANT_CHARS = 32
+MAX_UNPARSEABLE_TS_FRACTION = 0.2  # more bad timestamps than this fails the upload loudly.
 PREVIEW_ROWS = 10
 LEDGER_SAMPLE_SIZE = 200  # ledger entries embedded in a Brief; full counts are in ledger_summary.
 
 # Rate limits are generous so automated evaluators are not blocked; the provider spend cap
 # is the hard backstop.
+UPLOAD_RATE_LIMIT_PER_HOUR = 60  # uploads per client IP per hour.
+UPLOAD_DAILY_CAP = 2000
+UPLOAD_TTL_HOURS = 24.0  # stored upload text is deleted after this.
+BRIEF_TTL_DAYS = 30.0
+BRIEF_TIMEOUT_S = 600.0  # a brief still processing after this is reported as failed.
 RATE_LIMIT_PER_HOUR = 20  # LLM-backed requests per client IP per hour.
 DAILY_CAP = 300  # LLM-backed requests per rolling 24h across all clients.
 
@@ -25,8 +36,14 @@ FLAG_PENALTY = {"critical": 15.0, "warn": 5.0, "info": 0.0}  # ASSUMPTION: score
 
 MISSING_TOKENS = frozenset({"", "-", "*", "na", "nan", "none", "null"})
 CEILING_SENTINEL = 500.0  # sensor-fault ceiling seen in KSPCB exports (see CLAUDE.md section 6).
-CEILING_MIN_RUN = 4  # ASSUMPTION: consecutive sentinel readings before it is treated as a fault.
-STUCK_MIN_RUN = 8  # ASSUMPTION: identical consecutive readings before a sensor is stuck.
+# ASSUMPTION: run lengths need both a reading count and a duration in hours, so the rules
+# hold for 15-min, hourly and daily data alike.
+CEILING_MIN_RUN = 4
+CEILING_MIN_HOURS = 3.0
+STUCK_MIN_RUN = 4
+STUCK_MIN_HOURS = 8.0
+ZERO_RUN_OK = frozenset({"RF", "TOT-RF", "RAINFALL"})  # constant zero is normal for rain gauges.
+DAILY_CADENCE_MIN_HOURS = 20.0  # median spacing at or above this means daily readings.
 GAP_MIN_HOURS = 24.0  # ASSUMPTION: silence between valid readings that counts as a gap.
 LAT_COLUMNS = frozenset({"latitude", "lat"})
 LON_COLUMNS = frozenset({"longitude", "lon", "lng"})
@@ -45,6 +62,18 @@ PLAUSIBLE_RANGES: dict[str, tuple[float, float]] = {
     "PM10": (0.0, 2000.0),
     "AT": (-5.0, 50.0),
     "RH": (5.0, 100.0),
+}
+
+# Expected units after normalisation. SOURCE: CPCB AQI (ug/m3, CO in mg/m3). Other units are
+# flagged and excluded, never silently converted.
+EXPECTED_UNITS = {
+    "PM2.5": "ug/m3",
+    "PM10": "ug/m3",
+    "NO2": "ug/m3",
+    "SO2": "ug/m3",
+    "O3": "ug/m3",
+    "NH3": "ug/m3",
+    "CO": "mg/m3",
 }
 
 # CPCB National AQI (India). Concentration edges map to index edges INDEX_EDGES; the Severe
@@ -89,8 +118,25 @@ SARVAM_TIMEOUT_S = 120.0
 
 # Verification and comparison.
 VERIFIER_DROP_UNVERIFIED = False  # False: show unverified claims, visibly marked.
-NUMBER_REL_TOLERANCE = 0.01  # quoted numbers may differ from the fact by rounding only.
-NUMBER_ABS_TOLERANCE = 0.005
+# A claim citing a poor/unreliable fact must contain one of these hedges.
+HEDGE_WORDS = (
+    "unreliab",
+    "insufficient",
+    "low coverage",
+    "limited",
+    "caution",
+    "poor",
+    "incomplete",
+    "partial",
+    "not reliable",
+    "gap",
+    "fault",
+    "cannot",
+    "uncertain",
+    "doubt",
+)
+MAX_FACTS_TO_LLM = 150  # facts sent to the model; the rest stay in the brief but unnarrated.
+MAX_FLAG_FACTS = 20
 COMPARE_MIN_CHANGE_PCT = 5.0  # ASSUMPTION: relative change below this is not reported.
 COVERAGE_SHIFT_PTS = 10.0  # ASSUMPTION: coverage change that explains a value change.
 
@@ -105,7 +151,7 @@ class Settings(BaseSettings):
     session_secret: SecretStr = SecretStr("")
     refresh_token: SecretStr = SecretStr("")
     sarvam_api_key: SecretStr = SecretStr("")
-    sarvam_model: str = "sarvam-105b"
+    sarvam_model: str = "deepseekv4.1-flash-1017"
     llm_provider: str = "auto"  # auto | anthropic | sarvam
     database_path: str = "aqstudio.sqlite3"
     frontend_dir: str = "frontend"

@@ -1,12 +1,14 @@
 """Brief routes: create (background), poll, evidence, diff, list."""
 
 import logging
+import time
 from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 
 from aqstudio.compare.diff import diff_briefs
+from aqstudio.config import BRIEF_TIMEOUT_S
 from aqstudio.ingest.errors import IngestError
 from aqstudio.ingest.parse_long import parse_long_csv
 from aqstudio.ingest.propose import propose_mapping, validate_mapping
@@ -45,6 +47,7 @@ def _run_brief(
     mapping: list[ColumnMapping],
     assumptions: list[Assumption],
     naive_is_ist: bool,
+    day_first: bool | None,
     swap_ids: frozenset[str],
     request: BriefRequest,
 ) -> None:
@@ -55,6 +58,7 @@ def _run_brief(
             mapping,
             assumptions,
             naive_is_ist,
+            day_first,
             swap_ids,
             request.persona,
             request.context,
@@ -111,6 +115,8 @@ def create_brief(
     naive_is_ist = any(
         a.id == "timezone" and a.status == AssumptionStatus.OVERRIDDEN for a in assumptions
     )
+    date_order = next((a for a in assumptions if a.id == "date_order"), None)
+    day_first = None if date_order is None else date_order.status != AssumptionStatus.OVERRIDDEN
     swap_ids = frozenset(
         sid
         for a in assumptions
@@ -128,6 +134,7 @@ def create_brief(
         mapping,
         assumptions,
         naive_is_ist,
+        day_first,
         swap_ids,
         body,
     )
@@ -171,6 +178,17 @@ def get_brief(brief_id: str, deps: Annotated[Deps, Depends(get_deps)]) -> BriefS
     stored = deps.briefs.get(brief_id)
     if stored is None:
         raise ApiError(404, "not_found", "Brief not found.")
+    if (
+        stored.status == BriefStatus.PROCESSING
+        and time.time() - stored.created_at > BRIEF_TIMEOUT_S
+    ):
+        deps.briefs.save_failed(
+            brief_id,
+            ErrorBody(
+                code="timeout", message="The brief took too long to build. Please try again."
+            ),
+        )
+        stored = deps.briefs.get(brief_id) or stored
     return BriefState(
         id=stored.id,
         status=stored.status,

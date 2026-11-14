@@ -1,5 +1,6 @@
 """Upload route: store text and propose a mapping."""
 
+import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
@@ -13,6 +14,7 @@ from aqstudio.schemas import Preview, UploadResponse
 from aqstudio.web.body import extract_text
 from aqstudio.web.deps import Deps, get_deps
 from aqstudio.web.errors import ApiError
+from aqstudio.web.security import client_ip
 
 router = APIRouter()
 
@@ -22,6 +24,10 @@ async def create_upload(
     request: Request, deps: Annotated[Deps, Depends(get_deps)]
 ) -> UploadResponse:
     """Accept a file or pasted text, detect its format, and propose a column mapping."""
+    decision = deps.upload_limiter.check_and_record(client_ip(request))
+    if not decision.allowed:
+        raise ApiError(429, "rate_limited", decision.reason)
+    deps.db.purge_expired(time.time())
     text = await extract_text(request)
     fmt = detect_format(text)
     if fmt == DetectedFormat.WIDE_GRID:

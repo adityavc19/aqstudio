@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from aqstudio.config import Settings
-from aqstudio.schemas import ClaimDraft, Fact, Persona, QualityFlag, QuotedValue, StationReliability
+from aqstudio.schemas import ClaimDraft, Fact, Persona, QuotedValue
 
 
 @pytest.fixture
@@ -20,17 +20,14 @@ class FakeLLM:
 
     def __init__(self) -> None:
         self.calls = 0
+        self.fact_counts: list[int] = []
 
     def interpret_facts(
-        self,
-        facts: list[Fact],
-        flags: list[QualityFlag],
-        reliability: list[StationReliability],
-        persona: Persona,
-        context: str | None,
+        self, facts: list[Fact], persona: Persona, context: str | None
     ) -> list[ClaimDraft]:
         self.calls += 1
-        first = facts[0]
+        self.fact_counts.append(len(facts))
+        first = next(f for f in facts if "mean" in f.values)
         quote = QuotedValue(fact_id=first.id, field="mean", value=float(first.values["mean"] or 0))
         return [
             ClaimDraft(text="Grounded", fact_ids=[first.id], confidence=0.8, quoted_values=[quote]),

@@ -19,6 +19,7 @@ class Deps:
     uploads: UploadRepo
     briefs: BriefRepo
     limiter: UsageLimiter
+    upload_limiter: UsageLimiter
     llm: LLMClient | None
 
 
