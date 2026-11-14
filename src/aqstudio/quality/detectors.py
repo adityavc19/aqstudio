@@ -64,7 +64,7 @@ def _hours(run: list[Reading]) -> float:
     return (run[-1].ts - run[0].ts).total_seconds() / 3600
 
 
-def detect_ceiling(readings: list[Reading]) -> list[QualityFlag]:
+def detect_ceiling(readings: list[Reading], series: _Series | None = None) -> list[QualityFlag]:
     """Flag long runs of the sentinel ceiling value as probable sensor faults."""
     return [
         _flag(
@@ -74,14 +74,14 @@ def detect_ceiling(readings: list[Reading]) -> list[QualityFlag]:
             "(probable sensor fault).",
             run,
         )
-        for value, run in _value_runs(_by_series(readings))
+        for value, run in _value_runs(series if series is not None else _by_series(readings))
         if value == CEILING_SENTINEL
         and len(run) >= CEILING_MIN_RUN
         and _hours(run) >= CEILING_MIN_HOURS
     ]
 
 
-def detect_stuck(readings: list[Reading]) -> list[QualityFlag]:
+def detect_stuck(readings: list[Reading], series: _Series | None = None) -> list[QualityFlag]:
     """Flag long runs of identical values, excluding the sentinel ceiling."""
     return [
         _flag(
@@ -90,7 +90,7 @@ def detect_stuck(readings: list[Reading]) -> list[QualityFlag]:
             f"{len(run)} consecutive identical readings of {value:g} (stuck sensor?).",
             run,
         )
-        for value, run in _value_runs(_by_series(readings))
+        for value, run in _value_runs(series if series is not None else _by_series(readings))
         if value != CEILING_SENTINEL
         and len(run) >= STUCK_MIN_RUN
         and _hours(run) >= STUCK_MIN_HOURS
@@ -114,14 +114,14 @@ def _gap(
     )
 
 
-def detect_gaps(readings: list[Reading]) -> list[QualityFlag]:
+def detect_gaps(readings: list[Reading], series: _Series | None = None) -> list[QualityFlag]:
     """Flag silences over the configured gap, also at the start and end of the upload."""
     if not readings:
         return []
     first_row = min(readings, key=lambda r: r.ts)
     last_row = max(readings, key=lambda r: r.ts)
     flags: list[QualityFlag] = []
-    for items in _by_series(readings).values():
+    for items in (series if series is not None else _by_series(readings)).values():
         valid = [r for r in items if r.value is not None]
         if not valid:
             continue
@@ -138,19 +138,21 @@ def detect_gaps(readings: list[Reading]) -> list[QualityFlag]:
     return flags
 
 
-def detect_empty_columns(readings: list[Reading]) -> list[QualityFlag]:
+def detect_empty_columns(
+    readings: list[Reading], series: _Series | None = None
+) -> list[QualityFlag]:
     """Flag pollutants with no valid reading at all for a station."""
     return [
         _flag(FlagKind.EMPTY_COLUMN, Severity.INFO, "No valid readings in this column.", items)
-        for items in _by_series(readings).values()
+        for items in (series if series is not None else _by_series(readings)).values()
         if all(r.value is None for r in items)
     ]
 
 
-def detect_implausible(readings: list[Reading]) -> list[QualityFlag]:
+def detect_implausible(readings: list[Reading], series: _Series | None = None) -> list[QualityFlag]:
     """Flag runs of values outside configured physical ranges; values are kept, not deleted."""
     flags: list[QualityFlag] = []
-    for (_, pollutant), items in _by_series(readings).items():
+    for (_, pollutant), items in (series if series is not None else _by_series(readings)).items():
         bounds = PLAUSIBLE_RANGES.get(pollutant)
         if bounds is None:
             continue
@@ -171,7 +173,9 @@ def detect_implausible(readings: list[Reading]) -> list[QualityFlag]:
     return flags
 
 
-def detect_unit_mismatch(readings: list[Reading]) -> list[QualityFlag]:
+def detect_unit_mismatch(
+    readings: list[Reading], series: _Series | None = None
+) -> list[QualityFlag]:
     """Flag series whose unit differs from CPCB's; they are excluded, never converted."""
     return [
         _flag(
@@ -186,7 +190,9 @@ def detect_unit_mismatch(readings: list[Reading]) -> list[QualityFlag]:
             ),
             items,
         )
-        for (_, pollutant), items in _by_series(readings).items()
+        for (_, pollutant), items in (
+            series if series is not None else _by_series(readings)
+        ).items()
         if pollutant in EXPECTED_UNITS
         and items[0].unit != "unknown"
         and items[0].unit != EXPECTED_UNITS[pollutant]
@@ -255,7 +261,9 @@ def detect_zero_filled(readings: list[Reading]) -> list[QualityFlag]:
     ]
 
 
-def detect_scale_mismatch(readings: list[Reading]) -> list[QualityFlag]:
+def detect_scale_mismatch(
+    readings: list[Reading], series: _Series | None = None
+) -> list[QualityFlag]:
     """Flag columns whose names suggest a non-CPCB AQI scale; they are never mixed in."""
     return [
         _flag(
@@ -265,7 +273,9 @@ def detect_scale_mismatch(readings: list[Reading]) -> list[QualityFlag]:
             "data only and never mixed with the CPCB AQI.",
             items,
         )
-        for (_, pollutant), items in _by_series(readings).items()
+        for (_, pollutant), items in (
+            series if series is not None else _by_series(readings)
+        ).items()
         if any(hint in pollutant for hint in SCALE_HINTS)
     ]
 
@@ -276,17 +286,21 @@ def assign_flag_ids(flags: list[QualityFlag]) -> list[QualityFlag]:
 
 
 def detect_all(readings: list[Reading]) -> list[QualityFlag]:
-    """Run every detector and return all flags with sequential ids (Q1, Q2, ...)."""
+    """Run every detector and return all flags with sequential ids (Q1, Q2, ...).
+
+    Readings are grouped by station and pollutant once and shared by every detector.
+    """
+    series = _by_series(readings)
     return assign_flag_ids(
         [
-            *detect_ceiling(readings),
-            *detect_stuck(readings),
-            *detect_gaps(readings),
-            *detect_empty_columns(readings),
-            *detect_implausible(readings),
-            *detect_unit_mismatch(readings),
+            *detect_ceiling(readings, series),
+            *detect_stuck(readings, series),
+            *detect_gaps(readings, series),
+            *detect_empty_columns(readings, series),
+            *detect_implausible(readings, series),
+            *detect_unit_mismatch(readings, series),
             *detect_orphan_aqi(readings),
             *detect_zero_filled(readings),
-            *detect_scale_mismatch(readings),
+            *detect_scale_mismatch(readings, series),
         ]
     )

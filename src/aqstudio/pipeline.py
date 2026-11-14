@@ -4,6 +4,7 @@ import re
 import uuid
 from collections import Counter
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 from aqstudio.clean.normalize import clean_long
@@ -117,15 +118,20 @@ def build_brief(
     if len(sent) < len(facts):
         notes.append(f"The AI narrated {len(sent)} of {len(facts)} facts (highest priority first).")
     on_stage("interpreting")
-    drafts = llm.interpret_facts(sent, persona, context)
-    on_stage("verifying")
-    claims = verify_claims(drafts, facts)
-    on_stage("actions")
-    try:
-        actions = verify_actions(llm.rank_actions(sent, persona, context), facts, persona)
-    except LLMError as exc:
-        actions = []
-        notes.append(f"Actions could not be generated ({exc}); the rest of the brief is complete.")
+    # Claims and actions are independent calls on the same facts: run them concurrently.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        pending_actions = pool.submit(llm.rank_actions, sent, persona, context)
+        drafts = llm.interpret_facts(sent, persona, context)
+        on_stage("verifying")
+        claims = verify_claims(drafts, facts)
+        on_stage("actions")
+        try:
+            actions = verify_actions(pending_actions.result(), facts, persona)
+        except LLMError as exc:
+            actions = []
+            notes.append(
+                f"Actions could not be generated ({exc}); the rest of the brief is complete."
+            )
     infos = station_infos(locations, facts, reliability)
     brief = Brief(
         id=brief_id or uuid.uuid4().hex,

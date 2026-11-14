@@ -10,6 +10,9 @@ class FailingLLM:
     def interpret_facts(self, *args: object) -> list[object]:
         raise LLMError("The AI service request failed (APIError).")
 
+    def rank_actions(self, *args: object) -> list[object]:
+        raise LLMError("The AI service request failed (APIError).")
+
 
 def _upload(client: TestClient, text: str) -> str:
     resp = client.post("/api/uploads", json={"text": text})

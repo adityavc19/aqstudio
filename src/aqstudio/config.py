@@ -97,9 +97,12 @@ GAS_MOLECULAR_WEIGHT = {"NO2": 46.0055, "SO2": 64.066, "O3": 47.9982, "NH3": 17.
 # CPCB National AQI (India). Concentration edges map to index edges INDEX_EDGES; the Severe
 # band tops out at edge5 + (edge5 - edge4), the CPCB convention that reproduces the published
 # PM2.5 worked example (150 ug/m3 -> 323). Units: ug/m3, except CO in mg/m3.
-# SOURCE: CPCB AQI health breakpoints as reproduced at
-# https://ies.gov.in/arthapedia/concept/national-air-quality-index .
-# NOT YET VERIFIED against the CPCB PDF itself; verify before relying on these in production.
+# SOURCE: "AQI Category, Pollutants and Health Breakpoints", Government of India press release
+# (PIB) launching the National AQI, 17 Oct 2014: https://www.pib.gov.in/newsite/printrelease.aspx?relid=110654
+# (CPCB final report: https://app.cpcbccr.com/ccr_docs/FINAL-REPORT_AQI_.pdf). Values verified
+# against that table on 14 Nov 2026. The official table gives Severe only as "430+" etc., so the
+# Severe upper edge here is a convention. Known limitation: the official table marks O3's Very
+# Poor and Severe bands as one-hourly; this code uses 8-hour values for every O3 band.
 INDEX_EDGES = (0, 50, 100, 200, 300, 400, 500)
 AQI_BREAKPOINTS: dict[str, tuple[float, float, float, float, float, float]] = {
     "PM10": (0, 50, 100, 250, 350, 430),

@@ -22,3 +22,19 @@ def test_insufficient_data_returns_none() -> None:
 def test_extreme_value_capped_and_categories() -> None:
     assert sub_index("PM10", 5000) == 500
     assert category_for(50) == "Good" and category_for(401) == "Severe"
+
+
+def test_breakpoints_match_the_official_cpcb_table() -> None:
+    # Lower edges of each category, from the PIB release of 17 Oct 2014 (relid 110654).
+    from aqstudio.config import AQI_BREAKPOINTS
+
+    official = {
+        "PM10": (0, 50, 100, 250, 350, 430),
+        "PM2.5": (0, 30, 60, 90, 120, 250),
+        "NO2": (0, 40, 80, 180, 280, 400),
+        "O3": (0, 50, 100, 168, 208, 748),
+        "CO": (0, 1, 2, 10, 17, 34),
+        "SO2": (0, 40, 80, 380, 800, 1600),
+        "NH3": (0, 200, 400, 800, 1200, 1800),
+    }
+    assert official == AQI_BREAKPOINTS
