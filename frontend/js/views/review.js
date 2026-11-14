@@ -1,4 +1,4 @@
-import { PERSONAS, api, errorBox, h, postJson, show, table, when, words } from "../dom.js";
+import { api, errorBox, h, postJson, show, table, when, words } from "../dom.js";
 
 export function reviewView(uploadId) {
   const raw = sessionStorage.getItem(`aq.upload.${uploadId}`);
@@ -38,7 +38,6 @@ export function reviewView(uploadId) {
       try {
         const accepted = await postJson("/briefs", {
           upload_id: uploadId,
-          persona: document.querySelector('input[name="persona"]:checked').value,
           context: context.value.trim() || null,
           assumptions: Object.entries(readers).map(([id, read]) => ({ id, status: read() })),
           mapping: mappingEditor.changed() ? mappingEditor.read() : null,
@@ -53,8 +52,8 @@ export function reviewView(uploadId) {
       }
     },
   },
-    h("h2", {}, "Who is this brief for?"),
-    h("fieldset", {}, h("legend", { class: "sr-only" }, "Audience"), Object.entries(PERSONAS).map(([value, label], i) => h("label", { class: "choice" }, h("input", { type: "radio", name: "persona", value, checked: i === 0 }), label))),
+    h("h2", {}, "Ready to build the brief"),
+    h("p", { class: "muted small" }, "Actions are planned for a ward officer by default; you can switch the audience on the brief."),
     h("label", { for: "context" }, "Area or notes this data covers (optional)"),
     h("p", { id: "context-help", class: "muted small" }, "Shown to the AI as background only. Up to 1000 characters."),
     context,

@@ -33,3 +33,22 @@ def test_unknown_citations_dropped_and_weak_data_actions_gated() -> None:
 def test_actions_with_invented_numbers_are_dropped() -> None:
     bad = _action(["F1"]).model_copy(update={"text": "Cut PM2.5 by 70 today"})
     assert verify_actions([bad], [GOOD], Persona.SCHOOL) == []
+
+
+def test_actions_can_be_replanned_for_another_audience(settings) -> None:  # type: ignore[no-untyped-def]
+    from fastapi.testclient import TestClient
+
+    from aqstudio.web.app import create_app
+    from tests.conftest import FakeLLM, hourly_csv
+
+    client = TestClient(create_app(settings, FakeLLM()))
+    upload = client.post("/api/uploads", json={"text": hourly_csv()}).json()["upload_id"]
+    created = client.post("/api/briefs", json={"upload_id": upload})  # no persona needed
+    brief = client.get(f"/api/briefs/{created.json()['brief_id']}").json()["brief"]
+    assert brief["persona"] == "ward_officer"
+    school = client.get(f"/api/briefs/{brief['id']}/actions", params={"persona": "school"}).json()
+    assert school and all(a["persona"] == "school" for a in school)
+    same = client.get(
+        f"/api/briefs/{brief['id']}/actions", params={"persona": "ward_officer"}
+    ).json()
+    assert [a["id"] for a in same] == [a["id"] for a in brief["actions"]]

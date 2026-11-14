@@ -14,9 +14,10 @@ from aqstudio.ingest.errors import IngestError
 from aqstudio.ingest.parse_long import parse_long_csv
 from aqstudio.ingest.propose import propose_mapping, validate_mapping
 from aqstudio.llm.client import LLMClient, LLMError
-from aqstudio.pipeline import build_brief
+from aqstudio.pipeline import build_brief, priority_facts
 from aqstudio.quality.units import Conversion, conversion_for, normalize_unit
 from aqstudio.schemas import (
+    Action,
     Assumption,
     AssumptionStatus,
     Brief,
@@ -29,9 +30,11 @@ from aqstudio.schemas import (
     Diff,
     ErrorBody,
     EvidenceResponse,
+    Persona,
     RawTable,
 )
 from aqstudio.summary import summarize
+from aqstudio.verify.actions import verify_actions
 from aqstudio.web.deps import Deps, get_deps, session_id
 from aqstudio.web.errors import ApiError
 from aqstudio.web.security import client_ip
@@ -260,3 +263,26 @@ def get_diff(
     after, _ = _ready_brief(deps, brief_id)
     before, _ = _ready_brief(deps, against)
     return diff_briefs(before, after)
+
+
+@router.get("/briefs/{brief_id}/actions")
+def actions_for(
+    brief_id: str,
+    request: Request,
+    persona: Persona,
+    deps: Annotated[Deps, Depends(get_deps)],
+) -> list[Action]:
+    """Re-plan actions for another audience. Facts and findings do not change; only actions do."""
+    brief, _ = _ready_brief(deps, brief_id)
+    if persona == brief.persona:
+        return brief.actions
+    if deps.llm is None:
+        raise ApiError(503, "llm_unavailable", "The AI service is not configured on this server.")
+    decision = deps.limiter.check_and_record(client_ip(request))
+    if not decision.allowed:
+        raise ApiError(429, "rate_limited", decision.reason)
+    try:
+        drafts = deps.llm.rank_actions(priority_facts(brief.facts), persona, brief.context)
+    except LLMError as exc:
+        raise ApiError(502, "llm_unavailable", f"Could not plan actions: {exc}") from exc
+    return verify_actions(drafts, brief.facts, persona)

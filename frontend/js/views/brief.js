@@ -84,13 +84,32 @@ function dataNotes(brief) {
   return h("details", { class: "data-notes" }, h("summary", {}, `ⓘ ${plural(items.length, "data note")} behind these numbers`), h("ul", {}, items.map((i) => h("li", {}, i))));
 }
 
-function doFirst(brief) {
+function audienceSwitch(brief, onChange) {
+  // Persona only shapes actions, so it is chosen here, after the analysis, not before it.
+  const status = h("span", { class: "small muted", role: "status" });
+  const select = h("select", { id: "audience", onchange: async (e) => {
+    const persona = e.target.value;
+    select.disabled = true;
+    status.textContent = "Planning actions…";
+    try {
+      const actions = await api(`/briefs/${brief.id}/actions?${new URLSearchParams({ persona })}`);
+      onChange(persona, actions);
+    } catch (err) {
+      status.textContent = `${err.message}`;
+      select.value = brief.persona;
+      select.disabled = false;
+    }
+  } }, Object.entries(PERSONAS).map(([value, label]) => h("option", { value, selected: value === brief.persona }, label)));
+  return h("div", { class: "audience" }, h("label", { for: "audience" }, "Actions for"), select, status);
+}
+
+function doFirst(brief, onAudience) {
   // Top actions right under the headline: what to do comes before why.
   const order = { now: 0, escalate: 1, context: 2 };
   const top = [...brief.actions].sort((a, b) => order[a.tier] - order[b.tier]).slice(0, 3);
-  if (!top.length) return null;
   return h("section", { class: "card do-first", "aria-labelledby": "do-first-h" },
-    h("h2", { id: "do-first-h" }, `Do first · ${PERSONAS[brief.persona] || brief.persona}`),
+    h("div", { class: "card-head" }, h("h2", { id: "do-first-h" }, "Do first"), audienceSwitch(brief, onAudience)),
+    top.length ? null : h("p", { class: "muted" }, "No actions passed the checks for this audience."),
     h("ol", { class: "do-list" }, top.map((a) => h("li", {},
       h("span", { class: `badge tier-${a.tier}` }, TIER[a.tier] || a.tier),
       h("div", {}, h("b", {}, a.title || a.text), a.title ? h("div", { class: "small" }, a.text) : null, h("div", { class: "small muted" }, `${a.owner} · ${words(a.horizon)}`), a.gated_reason ? h("div", { class: "small warn-text" }, `⚠ ${a.gated_reason}`) : null)))),
@@ -150,19 +169,36 @@ function patterns(brief) {
     rows.length ? rows.map(([text, f]) => h("article", { class: "item" }, h("p", {}, text), h("div", { class: "chips" }, gradeBadge(f.reliability_grade)), evidenceChips(brief.id, [f.id]))) : h("p", { class: "muted" }, "Not enough data for daily or multi-day patterns."));
 }
 
+// Official CPCB 24-hour PM2.5 ranges per category (same source as the AQI breakpoints).
+const PM25_RANGES = { Good: "0–30", Satisfactory: "31–60", Moderate: "61–90", Poor: "91–120", "Very Poor": "121–250", Severe: "250+" };
+
+export function categoryLegend(withRanges) {
+  // Every colour and symbol used for categories, spelled out. Never colour or shape alone.
+  return h("div", { class: "legend", role: "group", "aria-label": "Legend" },
+    h("span", { class: "legend-title" }, withRanges ? "PM2.5 band (µg/m³):" : "AQI category:"),
+    Object.keys(PM25_RANGES).map((name) => {
+      const [symbol, cls] = CATEGORY[name];
+      return h("span", { class: "legend-item" }, h("span", { class: `swatch ${cls}`, "aria-hidden": "true" }, symbol), withRanges ? `${name} ${PM25_RANGES[name]}` : name);
+    }),
+    h("span", { class: "legend-item" }, h("span", { class: "swatch empty", "aria-hidden": "true" }), withRanges ? "No valid reading" : "Not enough data"));
+}
+
 function heatGrid(brief) {
-  if (!brief.hourly.length) return h("p", { class: "muted" }, "No hourly PM2.5 series to show (daily data or no PM2.5).");
+  if (!brief.hourly.length) return h("p", { class: "muted" }, "No hourly PM2.5 series to show (the data is daily, or has no PM2.5).");
   const hours = brief.hourly[0].cells.map((c) => new Date(c.ts).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", hour12: false }));
-  return h("div", {},
-    h("h3", {}, "Last 24 hours, hourly PM2.5"),
-    h("p", { class: "muted small" }, "Each cell is one hour (IST). Colours show an indicative PM2.5 band; the official AQI uses 24-hour averages. Empty cells had no valid reading."),
-    h("div", { class: "table-wrap", tabindex: "0", role: "region", "aria-label": "Hourly PM2.5 grid" },
+  const names = Object.fromEntries(brief.stations.map((s) => [s.station_id, s.name]));
+  return h("div", { class: "heat" },
+    h("h3", {}, "PM2.5 hour by hour, last 24 hours"),
+    h("p", { class: "muted small" }, "Each row is a station, each column one hour (IST, oldest on the left). The number is that hour's average PM2.5 in µg/m³; the colour is its band. Bands from single hours are indicative only, because the official AQI uses 24-hour averages. Striped cells had no valid reading (missing, or removed as a sensor fault)."),
+    categoryLegend(true),
+    h("div", { class: "table-wrap", tabindex: "0", role: "region", "aria-label": "Hourly PM2.5 by station" },
       h("table", { class: "grid-table" },
-        h("caption", { class: "sr-only" }, "Hourly PM2.5 by station"),
-        h("thead", {}, h("tr", {}, h("th", { scope: "col" }, "Station"), hours.map((hh) => h("th", { scope: "col", class: "hour" }, hh)))),
-        h("tbody", {}, brief.hourly.map((row) => h("tr", {}, h("th", { scope: "row" }, row.station_id), row.cells.map((c, i) => {
-          const [symbol, cls] = c.band ? CATEGORY[c.band] : ["", "empty"];
-          return h("td", { class: `cell ${cls}`, title: `${hours[i]}:00 IST: ${c.value == null ? "no reading" : `${c.value} ug/m3, ${c.band}`}` }, h("span", { "aria-hidden": "true" }, symbol), h("span", { class: "sr-only" }, c.value == null ? "no reading" : `${c.value}, ${c.band}`));
+        h("caption", { class: "sr-only" }, "Hourly PM2.5 in µg/m³ by station, last 24 hours, IST"),
+        h("thead", {}, h("tr", {}, h("th", { scope: "col" }, "Station"), hours.map((hh, i) => h("th", { scope: "col", class: "hour" }, i === hours.length - 1 ? `${hh}h (latest)` : `${hh}h`)))),
+        h("tbody", {}, brief.hourly.map((row) => h("tr", {}, h("th", { scope: "row" }, names[row.station_id] || row.station_id), row.cells.map((c, i) => {
+          const cls = c.band ? CATEGORY[c.band][1] : "empty";
+          const label = c.value == null ? `${hours[i]}:00, no reading` : `${hours[i]}:00, ${Math.round(c.value)} µg/m³, ${c.band}`;
+          return h("td", { class: `cell ${cls}`, title: label }, h("span", { "aria-hidden": "true" }, c.value == null ? "" : String(Math.round(c.value))), h("span", { class: "sr-only" }, label));
         })))))));
 }
 
@@ -195,7 +231,7 @@ function where(brief) {
   }, h("label", { for: "locations" }, "Add or correct station locations"), h("p", { id: "loc-help", class: "muted small" }, "CSV with columns station_id,lat,lon. Only the map changes; nothing is re-analysed."), text, h("div", { class: "actions" }, h("button", { type: "submit", class: "secondary" }, "Update map")), result);
   draw();
   drawMap(mapHolder, brief.stations);
-  return section("sec-where", "Where", true, h("div", { class: "where-grid" }, tableHolder, mapHolder), heatGrid(brief), h("details", {}, h("summary", {}, "Add locations"), form));
+  return section("sec-where", "Where", true, categoryLegend(false), h("div", { class: "where-grid" }, tableHolder, mapHolder), heatGrid(brief), h("details", {}, h("summary", {}, "Add locations"), form));
 }
 
 async function changed(brief, againstId, holder) {
@@ -305,7 +341,10 @@ async function render(brief, against, shareId) {
       h("h1", {}, brief.summary ? brief.summary.status_line : "Air quality brief"),
       kpis(brief),
       dataNotes(brief)),
-    doFirst(brief),
+    doFirst(brief, (persona, actions) => {
+      const y = window.scrollY;
+      render({ ...brief, persona, actions }, against, shareId).then(() => window.scrollTo(0, y));
+    }),
     h("nav", { class: "toc", "aria-label": "In this brief" }, toc.map(([id, label]) => h("a", { href: `#${id}`, onclick: (e) => { e.preventDefault(); openSection(id); } }, label))),
     claims(brief), where(brief), actions(brief), patterns(brief), changedHolder, quality(brief), advisory(brief),
     h("div", { class: "actions" }, h("a", { class: "btn secondary", href: "#/" }, "Add more data")));

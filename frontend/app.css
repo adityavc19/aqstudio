@@ -235,3 +235,15 @@ details.section table, details.section .map { background: var(--card); }
 .nav-cta { white-space: nowrap; }
 .chips button.link { min-height: 44px; }
 details > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+.audience { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.audience label { margin: 0; font-size: 0.9rem; }
+.audience select { width: auto; min-height: 44px; }
+/* Legend: every category colour and symbol is named */
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.9rem; margin: 0.5rem 0 0.75rem; font-size: 0.85rem; }
+.legend-title { font-weight: 700; }
+.legend-item { display: inline-flex; align-items: center; gap: 0.35rem; }
+.swatch { display: inline-grid; place-items: center; width: 1.4rem; height: 1.4rem; border: 2px solid; border-radius: 4px; font-size: 0.75rem; font-weight: 800; }
+.swatch.empty, .grid-table .cell.empty { border-color: var(--line); background: repeating-linear-gradient(45deg, #fff, #fff 4px, #e3e7eb 4px, #e3e7eb 8px); }
+.grid-table .cell { min-width: 2.1rem; height: 2rem; font-size: 0.72rem; font-weight: 700; }
+.grid-table th.hour { font-weight: 600; white-space: nowrap; }
+.top { z-index: 1100; } /* above Leaflet panes (z-index up to 1000) so the map never covers the header */

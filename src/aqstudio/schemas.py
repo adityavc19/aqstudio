@@ -419,7 +419,7 @@ class BriefRequest(BaseModel):
     """Body of POST /briefs."""
 
     upload_id: str
-    persona: Persona
+    persona: Persona = Persona.WARD_OFFICER  # only shapes actions; switchable on the brief
     context: str | None = Field(default=None, max_length=1000)
     mapping: list[ColumnMapping] | None = None
     assumptions: list[AssumptionChoice] = Field(default_factory=list)
