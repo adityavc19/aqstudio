@@ -13,6 +13,8 @@ from aqstudio.advisory.speech import SarvamSpeaker, Speaker
 from aqstudio.advisory.translate import SarvamTranslator, Translator
 from aqstudio.config import (
     DAILY_CAP,
+    LIVE_DAILY_CAP,
+    LIVE_RATE_LIMIT_PER_HOUR,
     RATE_LIMIT_PER_HOUR,
     UPLOAD_DAILY_CAP,
     UPLOAD_RATE_LIMIT_PER_HOUR,
@@ -22,12 +24,14 @@ from aqstudio.llm.anthropic_client import AnthropicClient
 from aqstudio.llm.cache import CachedLLMClient
 from aqstudio.llm.client import LLMClient
 from aqstudio.llm.sarvam_client import SarvamClient
+from aqstudio.sources.live import PublicData
+from aqstudio.sources.openaq import OpenAQClient
 from aqstudio.store.db import Database
 from aqstudio.store.limits import UsageLimiter
 from aqstudio.store.repos import BriefRepo, ShareRepo, UploadRepo
 from aqstudio.web.deps import Deps
 from aqstudio.web.errors import install_error_handlers
-from aqstudio.web.routes import briefs, citizen, health, locations, render, uploads
+from aqstudio.web.routes import areas, briefs, citizen, health, locations, render, uploads
 from aqstudio.web.security import install_security
 
 _SESSION_MAX_AGE = 30 * 24 * 3600
@@ -62,11 +66,18 @@ def _build_speaker(settings: Settings) -> Speaker | None:
     return SarvamSpeaker(key) if key else None
 
 
+def _build_public_data(settings: Settings) -> PublicData | None:
+    """OpenAQ client when its key is configured."""
+    key = settings.openaq_api_key.get_secret_value()
+    return OpenAQClient(key) if key else None
+
+
 def create_app(
     settings: Settings | None = None,
     llm: LLMClient | None = None,
     translator: Translator | None = None,
     speaker: Speaker | None = None,
+    public_data: PublicData | None = None,
 ) -> FastAPI:
     """Create the app; settings and the LLM client are injectable so tests can substitute fakes."""
     settings = settings or Settings()
@@ -87,6 +98,10 @@ def create_app(
         shares=ShareRepo(db),
         translator=translator or _build_translator(settings),
         speaker=speaker or _build_speaker(settings),
+        public_data=public_data or _build_public_data(settings),
+        live_limiter=UsageLimiter(
+            settings.database_path, LIVE_RATE_LIMIT_PER_HOUR, LIVE_DAILY_CAP, scope="live"
+        ),
     )
     db.purge_expired(time.time())
     app.state.deps.briefs.fail_orphaned()
@@ -106,6 +121,7 @@ def create_app(
     app.include_router(locations.router, prefix="/api")
     app.include_router(render.router, prefix="/api")
     app.include_router(citizen.router, prefix="/api")
+    app.include_router(areas.router, prefix="/api")
     frontend = Path(settings.frontend_dir)
     if frontend.is_dir():
         app.mount("/", StaticFiles(directory=frontend, html=True), name="frontend")

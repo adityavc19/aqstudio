@@ -64,6 +64,7 @@ def test_every_api_route_the_frontend_calls_exists_in_the_contract(tmp_path: Pat
         "/api/share/{share_id}",
         "/api/share/{share_id}/advisory",
         "/api/share/{share_id}/audio",
+        "/api/areas/live",
     ):
         assert route in paths
     script = _scripts()

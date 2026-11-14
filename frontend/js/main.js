@@ -3,6 +3,7 @@ import { closeEvidence } from "./evidence.js";
 import { briefView } from "./views/brief.js";
 import { citizenView } from "./views/citizen.js";
 import { homeView } from "./views/home.js";
+import { liveView } from "./views/live.js";
 import { reviewView } from "./views/review.js";
 
 function route() {
@@ -12,6 +13,7 @@ function route() {
   if (parts[0] === "review" && parts[1]) return reviewView(parts[1]);
   if (parts[0] === "brief" && parts[1]) return briefView(parts[1], new URLSearchParams(query).get("against"));
   if (parts[0] === "c" && parts[1]) return citizenView(parts[1]);
+  if (parts[0] === "live") return liveView(new URLSearchParams(query));
   return homeView();
 }
 

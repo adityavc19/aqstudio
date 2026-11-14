@@ -1,4 +1,4 @@
-import { CATEGORY, api, categoryBadge, categoryLabel, errorBox, gradeBadge, h, num, periodLabel, radioTabs, show, when } from "../dom.js";
+import { CATEGORY, PLAIN, api, categoryBadge, categoryLabel, errorBox, gradeBadge, h, num, periodLabel, radioTabs, show, when } from "../dom.js";
 import { LANGUAGES, viewToggle } from "./brief.js";
 
 const GROUPS = { everyone: "Everyone", children: "Children", older_adults: "Older adults", sensitive_groups: "Sensitive groups", data: "About the data" };
@@ -72,14 +72,6 @@ export async function citizenView(shareId) {
   loadAdvice();
 }
 
-const PLAIN = {
-  Good: "Air is good. Enjoy outdoor activity.",
-  Satisfactory: "Air is acceptable. Very sensitive people may want to take it easy.",
-  Moderate: "Sensitive groups should reduce long or heavy outdoor exertion.",
-  Poor: "Reduce long outdoor activity, especially children, older adults and people with asthma.",
-  "Very Poor": "Avoid long outdoor activity. Children and older adults should stay indoors where possible.",
-  Severe: "Stay indoors where possible and avoid all outdoor exertion.",
-};
 
 function stationCard(s) {
   // The answer first: category, a plain-language line, then how far to trust it.

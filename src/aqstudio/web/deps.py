@@ -8,6 +8,7 @@ from fastapi import Request
 from aqstudio.advisory.speech import Speaker
 from aqstudio.advisory.translate import Translator
 from aqstudio.llm.client import LLMClient
+from aqstudio.sources.live import PublicData
 from aqstudio.store.db import Database
 from aqstudio.store.limits import UsageLimiter
 from aqstudio.store.repos import BriefRepo, ShareRepo, UploadRepo
@@ -26,6 +27,8 @@ class Deps:
     shares: ShareRepo
     translator: Translator | None = None
     speaker: Speaker | None = None
+    public_data: PublicData | None = None
+    live_limiter: UsageLimiter | None = None
 
 
 def get_deps(request: Request) -> Deps:

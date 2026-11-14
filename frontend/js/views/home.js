@@ -1,6 +1,19 @@
 import { api, categoryBadge, errorBox, h, radioTabs, show } from "../dom.js";
 import { sampleCsv } from "../sample.js";
 
+// City-centre coordinates (public facts) used only to search for nearby monitors.
+const CITIES = {
+  Bengaluru: [12.9716, 77.5946],
+  Delhi: [28.6139, 77.209],
+  Mumbai: [19.076, 72.8777],
+  Chennai: [13.0827, 80.2707],
+  Kolkata: [22.5726, 88.3639],
+  Hyderabad: [17.385, 78.4867],
+  Pune: [18.5204, 73.8567],
+  Ahmedabad: [23.0225, 72.5714],
+  Lucknow: [26.8467, 80.9462],
+};
+
 export function homeView() {
   let tab = "paste";
   let file = null;
@@ -58,11 +71,27 @@ export function homeView() {
     tabs.list, panels.paste, panels.upload, panels.sample, errors, h("div", { class: "actions" }, submit), status);
 
   const shareInput = h("input", { type: "text", id: "share-link", "aria-describedby": "share-help", placeholder: "https://…/#/c/…" });
+  const geoStatus = h("p", { class: "small", role: "status" });
+  const city = h("select", { id: "city" }, h("option", { value: "" }, "Choose a city"), Object.keys(CITIES).map((name) => h("option", { value: name }, name)));
   const citizen = h("section", { class: "card soft", "aria-labelledby": "cit-h" },
-    h("h2", { id: "cit-h" }, "Just checking the air near you?"),
-    h("p", { id: "share-help", class: "muted small" }, "Open a citizen page someone shared with you."),
-    h("form", { class: "inline", onsubmit: (e) => { e.preventDefault(); const id = shareInput.value.trim().split("/c/").pop(); if (id) location.hash = `#/c/${id}`; } },
-      h("label", { for: "share-link", class: "sr-only" }, "Citizen page link"), shareInput, h("button", { type: "submit", class: "secondary" }, "Open")));
+    h("h2", { id: "cit-h" }, "Check the air near you"),
+    h("p", { class: "muted small" }, "Live readings from public monitors, rated with the official CPCB rules."),
+    h("div", { class: "actions" }, h("button", { type: "button", onclick: () => {
+      if (!navigator.geolocation) return (geoStatus.textContent = "Location is not available in this browser. Choose a city instead.");
+      geoStatus.textContent = "Finding your location…";
+      navigator.geolocation.getCurrentPosition(
+        (pos) => (location.hash = `#/live?${new URLSearchParams({ lat: pos.coords.latitude.toFixed(3), lon: pos.coords.longitude.toFixed(3), place: "your location" })}`),
+        () => (geoStatus.textContent = "Location permission was not given. Choose a city instead."),
+        { timeout: 10000 },
+      );
+    } }, "Use my location")),
+    geoStatus,
+    h("form", { class: "inline", onsubmit: (e) => { e.preventDefault(); const c = CITIES[city.value]; if (c) location.hash = `#/live?${new URLSearchParams({ lat: c[0], lon: c[1], place: city.value })}`; } },
+      h("label", { for: "city", class: "sr-only" }, "City"), city, h("button", { type: "submit", class: "secondary" }, "Check")),
+    h("details", {}, h("summary", { class: "small" }, "Have a shared citizen link?"),
+      h("form", { class: "inline", onsubmit: (e) => { e.preventDefault(); const id = shareInput.value.trim().split("/c/").pop(); if (id) location.hash = `#/c/${id}`; } },
+        h("label", { for: "share-link", class: "sr-only" }, "Citizen page link"), shareInput, h("button", { type: "submit", class: "secondary" }, "Open")),
+      h("p", { id: "share-help", class: "muted small" }, "Opens the citizen view of a brief someone shared.")));
 
   const recent = h("section", { class: "card", "aria-labelledby": "recent-h" }, h("h2", { id: "recent-h" }, "Recent briefs"), h("p", { class: "muted" }, "Loading…"));
   const quick = h("button", { type: "button", class: "secondary", onclick: () => { textarea.value = sampleCsv(); tabs.select("paste"); send(null); } }, "▶ Try it with synthetic sample data");

@@ -21,6 +21,8 @@ services:
         value: auto
       - key: SESSION_SECRET
         generateValue: true
+      - key: OPENAQ_API_KEY
+        sync: false
       - key: TRUSTED_IP_HEADER
         value: CF-Connecting-IP
       - key: COOKIE_SECURE

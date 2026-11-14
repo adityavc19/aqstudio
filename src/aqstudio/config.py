@@ -155,6 +155,38 @@ ADVISORY_DISCLAIMER = (
     "doctor or local health authority. AI-written; translations are machine-made, please review."
 )
 
+# Live public data (OpenAQ v3). Only regulatory monitors that reported recently are used.
+OPENAQ_BASE_URL = "https://api.openaq.org/v3"
+LIVE_RADIUS_M = 25000  # OpenAQ's maximum search radius
+LIVE_MAX_AGE_HOURS = 3.0  # ASSUMPTION: older than this, a station is not "now"
+LIVE_STATIONS = 3  # nearest live stations shown
+LIVE_WINDOW_HOURS = 24  # CPCB real-time AQI uses a rolling 24-hour window
+LIVE_CACHE_SECONDS = 1800
+LIVE_RATE_LIMIT_PER_HOUR = 30
+LIVE_DAILY_CAP = 1000
+OPENAQ_PARAMETERS = {
+    "pm25": "PM2.5",
+    "pm10": "PM10",
+    "no2": "NO2",
+    "so2": "SO2",
+    "o3": "O3",
+    "co": "CO",
+    "nh3": "NH3",
+}
+# SOURCE: "Associated Health Impacts" in the same PIB release (17 Oct 2014) as AQI_BREAKPOINTS.
+HEALTH_IMPACTS = {
+    "Good": "Minimal impact.",
+    "Satisfactory": "May cause minor breathing discomfort to sensitive people.",
+    "Moderate": "May cause breathing discomfort to people with lung disease such as asthma, and "
+    "discomfort to people with heart disease, children and older adults.",
+    "Poor": "May cause breathing discomfort to people on prolonged exposure, and discomfort to "
+    "people with heart disease.",
+    "Very Poor": "May cause respiratory illness to people on prolonged exposure. Effect may be "
+    "more pronounced in people with lung and heart diseases.",
+    "Severe": "May cause respiratory impact even on healthy people, and serious health impacts on "
+    "people with lung or heart disease. Impacts may be felt even during light physical activity.",
+}
+
 # Verification and comparison.
 VERIFIER_DROP_UNVERIFIED = False  # False: show unverified claims, visibly marked.
 # A claim citing a poor/unreliable fact must contain one of these hedges.
@@ -195,4 +227,7 @@ class Settings(BaseSettings):
     database_path: str = "aqstudio.sqlite3"
     frontend_dir: str = "frontend"
     cookie_secure: bool = False
-    trusted_ip_header: str = ""  # e.g. CF-Connecting-IP on Render; empty trusts no header
+    trusted_ip_header: str = ""
+    openaq_api_key: SecretStr = SecretStr(
+        ""
+    )  # e.g. CF-Connecting-IP on Render; empty trusts no header

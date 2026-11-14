@@ -21,6 +21,16 @@ export const CATEGORY = {
   insufficient_data: ["?", "c-na"],
 };
 export const CATEGORY_ORDER = ["Good", "Satisfactory", "Moderate", "Poor", "Very Poor", "Severe", "insufficient_data"];
+// One plain-language line per CPCB category, for the public.
+export const PLAIN = {
+  Good: "Air is good. Enjoy outdoor activity.",
+  Satisfactory: "Air is acceptable. Very sensitive people may want to take it easy.",
+  Moderate: "Sensitive groups should reduce long or heavy outdoor exertion.",
+  Poor: "Reduce long outdoor activity, especially children, older adults and people with asthma.",
+  "Very Poor": "Avoid long outdoor activity. Children and older adults should stay indoors where possible.",
+  Severe: "Stay indoors where possible and avoid all outdoor exertion.",
+};
+
 const GRADE_SYMBOL = { good: "✔", fair: "◐", poor: "▲", unreliable: "✖" };
 
 export function h(tag, attrs = {}, ...kids) {

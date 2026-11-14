@@ -558,3 +558,40 @@ class CitizenPage(BaseModel):
     stations: list[StationInfo]
     data_note: str
     notice: str
+
+
+class LivePollutant(BaseModel):
+    """One pollutant's rolling-window value at a live station."""
+
+    pollutant: str
+    value: float | None
+    unit: str
+    hours: int
+
+
+class LiveStation(BaseModel):
+    """A nearby live monitoring station with its computed CPCB AQI, or why there is none."""
+
+    name: str
+    distance_km: float
+    last_reading_age_min: int
+    aqi: int | None
+    category: str
+    dominant: str | None
+    reason: str | None
+    pollutants: list[LivePollutant]
+    skipped: list[str] = Field(
+        default_factory=list
+    )  # e.g. "NO2 (ppb)": not converted automatically
+
+
+class LiveArea(BaseModel):
+    """Response of GET /areas/live: nearest live stations and the official health statement."""
+
+    lat: float
+    lon: float
+    generated_at: AwareDatetime
+    stations: list[LiveStation]
+    worst_category: str
+    health_statement: str | None
+    source: str
