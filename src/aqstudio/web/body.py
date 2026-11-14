@@ -7,10 +7,12 @@ from pydantic import BaseModel, Field, ValidationError
 from starlette.datastructures import UploadFile
 
 from aqstudio.config import MAX_ID_CHARS, MAX_POLLUTANT_CHARS, MAX_UPLOAD_BYTES
+from aqstudio.ingest.errors import IngestError
 from aqstudio.ingest.parse_wide import WideLabels
+from aqstudio.ingest.parse_xlsx import xlsx_to_csv
 from aqstudio.web.errors import ApiError
 
-_ALLOWED_SUFFIXES = (".csv", ".txt")
+_ALLOWED_SUFFIXES = (".csv", ".txt", ".xlsx")
 
 
 class UploadTextBody(BaseModel):
@@ -57,11 +59,17 @@ async def extract_text(request: Request) -> str:
             raise ApiError(
                 415,
                 "unsupported_format",
-                "Only .csv or .txt files are accepted. PDF and XLSX are not supported yet.",
+                "Only .csv, .txt or .xlsx files are accepted. PDF is not supported yet.",
             )
         data = await file.read(MAX_UPLOAD_BYTES + 1)
         if len(data) > MAX_UPLOAD_BYTES:
             raise ApiError(413, "file_too_large", "Upload exceeds the maximum file size.")
+        if file.filename.lower().endswith(".xlsx"):
+            try:
+                return xlsx_to_csv(data)
+            except IngestError as exc:
+                status = 413 if exc.code == "file_too_large" else 422
+                raise ApiError(status, exc.code, str(exc)) from exc
         return _decode(data)
     try:
         return UploadTextBody.model_validate(json.loads(await _read_capped(request))).text
