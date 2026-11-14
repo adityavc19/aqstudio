@@ -231,3 +231,7 @@ details.section { background: transparent; border: none; border-top: 1px solid v
 details.section > summary { padding: 1rem 0 0.75rem; }
 details.section > .body { padding: 0 0 0.5rem; }
 details.section table, details.section .map { background: var(--card); }
+/* FINDING-007: no wrapping header action; remaining small controls reach touch size */
+.nav-cta { white-space: nowrap; }
+.chips button.link { min-height: 44px; }
+details > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
