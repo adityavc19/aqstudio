@@ -126,3 +126,17 @@ class Diff(BaseModel):
     resolved_flags: list[QualityFlag]
     coverage_changes: dict[str, float]
     coverage_driven_fact_ids: list[str]
+
+
+class RawTable(BaseModel):
+    """Unparsed tabular text: header plus string cells."""
+
+    columns: list[str]
+    rows: list[list[str]]
+
+
+class CleanResult(BaseModel):
+    """Tidy readings plus the ledger of every change made to get them."""
+
+    readings: list[Reading]
+    ledger: list[LedgerEntry]

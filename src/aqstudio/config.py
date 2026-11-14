@@ -21,3 +21,11 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr = SecretStr("")
     anthropic_model: str = "claude-sonnet-5-5"
     session_secret: SecretStr = SecretStr("")
+
+
+MISSING_TOKENS = frozenset({"", "-", "*", "na", "nan", "none", "null"})
+CEILING_SENTINEL = 500.0  # sensor-fault ceiling seen in KSPCB exports (see CLAUDE.md section 6).
+CEILING_MIN_RUN = 4  # consecutive sentinel readings before it is treated as a fault.
+STUCK_MIN_RUN = 8  # identical consecutive readings before a sensor is treated as stuck.
+GAP_MIN_HOURS = 24.0  # silence between valid readings that counts as a gap.
+NON_POLLUTANT_COLUMNS = frozenset({"station id", "state", "city", "station name", "timestamp"})
