@@ -67,7 +67,7 @@ def source_rows(table: RawTable, facts: list[Fact]) -> dict[str, dict[str, str]]
     return rows
 
 
-def _priority_facts(facts: list[Fact]) -> list[Fact]:
+def priority_facts(facts: list[Fact]) -> list[Fact]:
     """The facts sent to the model: all of them, or the most important MAX_FACTS_TO_LLM."""
     if len(facts) <= MAX_FACTS_TO_LLM:
         return facts
@@ -109,7 +109,7 @@ def build_brief(
     notes: list[str] = []
     if daily_cadence:
         assumptions = [*assumptions, _CADENCE_ASSUMPTION]
-    sent = _priority_facts(facts)
+    sent = priority_facts(facts)
     if len(sent) < len(facts):
         notes.append(f"The AI narrated {len(sent)} of {len(facts)} facts (highest priority first).")
     on_stage("interpreting")

@@ -2,18 +2,21 @@
 
 import hashlib
 import json
-import time
+from collections.abc import Callable
+
+from pydantic import BaseModel
 
 from aqstudio.llm.client import LLMClient
-from aqstudio.llm.prompts.actions import PROMPT_VERSION as ACTIONS_PROMPT_VERSION
-from aqstudio.llm.prompts.interpret import PROMPT_VERSION
-from aqstudio.schemas import (
-    ActionDraft,
-    ClaimDraft,
-    Fact,
-    Persona,
-)
+from aqstudio.llm.prompts.actions import PROMPT_VERSION as ACTIONS_VERSION
+from aqstudio.llm.prompts.advisory import PROMPT_VERSION as ADVISORY_VERSION
+from aqstudio.llm.prompts.interpret import PROMPT_VERSION as INTERPRET_VERSION
+from aqstudio.schemas import ActionDraft, AdvisoryDraft, ClaimDraft, Fact, Persona
 from aqstudio.store.db import Database
+
+
+def cache_key(**material: object) -> str:
+    """Stable hash of everything that determines an output."""
+    return hashlib.sha256(json.dumps(material, sort_keys=True, default=str).encode()).hexdigest()
 
 
 class CachedLLMClient:
@@ -25,57 +28,48 @@ class CachedLLMClient:
         self._db = db
         self._model = model
 
+    def _cached[M: BaseModel](
+        self, key: str, schema: type[M], compute: Callable[[], list[M]]
+    ) -> list[M]:
+        """Return the cached list for a key, or compute and store it."""
+        hit = self._db.cache_get(key)
+        if hit is not None:
+            return [schema.model_validate(item) for item in json.loads(hit)]
+        items = compute()
+        self._db.cache_put(key, json.dumps([i.model_dump(mode="json") for i in items]))
+        return items
+
+    def _key(self, kind: str, version: str, facts: list[Fact], **extra: object) -> str:
+        return cache_key(
+            kind=kind,
+            prompt=version,
+            model=self._model,
+            facts=[f.model_dump(mode="json") for f in facts],
+            **extra,
+        )
+
     def interpret_facts(
         self, facts: list[Fact], persona: Persona, context: str | None
     ) -> list[ClaimDraft]:
-        """Return cached claims when the same inputs were interpreted before."""
-        material = json.dumps(
-            {
-                "facts": [f.model_dump(mode="json") for f in facts],
-                "persona": persona.value,
-                "context": context,
-                "prompt": PROMPT_VERSION,
-                "model": self._model,
-            },
-            sort_keys=True,
+        """Claims, cached by inputs."""
+        key = self._key("claims", INTERPRET_VERSION, facts, persona=persona.value, context=context)
+        return self._cached(
+            key, ClaimDraft, lambda: self._inner.interpret_facts(facts, persona, context)
         )
-        key = hashlib.sha256(material.encode()).hexdigest()
-        with self._db.connect() as conn:
-            row = conn.execute("SELECT value FROM llm_cache WHERE key = ?", (key,)).fetchone()
-        if row is not None:
-            return [ClaimDraft.model_validate(c) for c in json.loads(row[0])]
-        claims = self._inner.interpret_facts(facts, persona, context)
-        with self._db.connect() as conn:
-            conn.execute(
-                "INSERT OR REPLACE INTO llm_cache (key, value, created_at) VALUES (?, ?, ?)",
-                (key, json.dumps([c.model_dump(mode="json") for c in claims]), time.time()),
-            )
-        return claims
 
     def rank_actions(
         self, facts: list[Fact], persona: Persona, context: str | None
     ) -> list[ActionDraft]:
-        """Return cached actions when the same inputs were ranked before."""
-        material = json.dumps(
-            {
-                "kind": "actions",
-                "facts": [f.model_dump(mode="json") for f in facts],
-                "persona": persona.value,
-                "context": context,
-                "prompt": ACTIONS_PROMPT_VERSION,
-                "model": self._model,
-            },
-            sort_keys=True,
+        """Actions, cached by inputs."""
+        key = self._key("actions", ACTIONS_VERSION, facts, persona=persona.value, context=context)
+        return self._cached(
+            key, ActionDraft, lambda: self._inner.rank_actions(facts, persona, context)
         )
-        key = hashlib.sha256(material.encode()).hexdigest()
-        with self._db.connect() as conn:
-            row = conn.execute("SELECT value FROM llm_cache WHERE key = ?", (key,)).fetchone()
-        if row is not None:
-            return [ActionDraft.model_validate(a) for a in json.loads(row[0])]
-        actions = self._inner.rank_actions(facts, persona, context)
-        with self._db.connect() as conn:
-            conn.execute(
-                "INSERT OR REPLACE INTO llm_cache (key, value, created_at) VALUES (?, ?, ?)",
-                (key, json.dumps([a.model_dump(mode="json") for a in actions]), time.time()),
-            )
-        return actions
+
+    def write_advisory(self, facts: list[Fact], level: str) -> AdvisoryDraft:
+        """Advisory, cached by inputs."""
+        key = self._key("advisory", ADVISORY_VERSION, facts, level=level)
+        [draft] = self._cached(
+            key, AdvisoryDraft, lambda: [self._inner.write_advisory(facts, level)]
+        )
+        return draft

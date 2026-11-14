@@ -481,3 +481,37 @@ class LocationsResponse(BaseModel):
     coordinates_source: CoordinatesSource
     matched: list[LocationMatch]
     unmatched: list[LocationRejection]
+
+
+class AdvisoryDraft(BaseModel):
+    """A citizen advisory as returned by the LLM, in English, before verification."""
+
+    headline: str
+    everyone: str
+    children: str
+    older_adults: str
+    sensitive_groups: str
+    fact_ids: list[str]
+    confidence: float = Field(ge=0, le=1)
+
+
+class RenderedSection(BaseModel):
+    """One block of a rendered document."""
+
+    key: str
+    title: str
+    text: str
+    verified: bool
+    translated: bool
+
+
+class Rendered(BaseModel):
+    """Response of GET /briefs/{id}/render."""
+
+    language: str
+    level: str
+    format: str
+    sections: list[RenderedSection]
+    citations_preserved: bool
+    fact_ids: list[str]
+    disclaimer: str

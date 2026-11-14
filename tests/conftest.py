@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from aqstudio.config import Settings
-from aqstudio.schemas import ActionDraft, ClaimDraft, Fact, Persona, QuotedValue
+from aqstudio.schemas import ActionDraft, AdvisoryDraft, ClaimDraft, Fact, Persona, QuotedValue
 
 
 @pytest.fixture
@@ -39,6 +39,22 @@ class FakeLLM:
     ) -> list[ActionDraft]:
         good = next(f for f in facts if "mean" in f.values)
         return [_action([good.id]), _action(["F999"])]
+
+    def write_advisory(self, facts: list[Fact], level: str) -> AdvisoryDraft:
+        self.calls += 1
+        aqi = next((f for f in facts if f.kind == "aqi_latest"), facts[0])
+        value = aqi.values.get("aqi")
+        return AdvisoryDraft(
+            headline=f"Air quality index is {value:g} today."
+            if isinstance(value, float)
+            else "Air today.",
+            everyone="Limit long outdoor exercise.",
+            children="Keep sports indoors.",
+            older_adults="Avoid long walks outside.",
+            sensitive_groups="Keep medicines handy and contact a doctor if unwell.",
+            fact_ids=[aqi.id],
+            confidence=0.7,
+        )
 
 
 def _action(fact_ids: list[str], tier: str = "now", effect: str = "exposure") -> ActionDraft:

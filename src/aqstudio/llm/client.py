@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from aqstudio.schemas import ActionDraft, ClaimDraft, Fact, Persona
+from aqstudio.schemas import ActionDraft, AdvisoryDraft, ClaimDraft, Fact, Persona
 
 
 class LLMError(RuntimeError):
@@ -22,4 +22,8 @@ class LLMClient(Protocol):
         self, facts: list[Fact], persona: Persona, context: str | None
     ) -> list[ActionDraft]:
         """Return persona-specific actions, each citing fact ids."""
+        ...
+
+    def write_advisory(self, facts: list[Fact], level: str) -> AdvisoryDraft:
+        """Return a citizen advisory in English at the given reading level."""
         ...

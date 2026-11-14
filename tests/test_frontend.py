@@ -52,8 +52,9 @@ def test_every_api_route_the_frontend_calls_exists_in_the_contract(tmp_path: Pat
         "/api/briefs/{brief_id}/evidence/{fact_id}",
         "/api/briefs/{brief_id}/diff",
         "/api/briefs/{brief_id}/locations",
+        "/api/briefs/{brief_id}/render",
     ):
         assert route in paths
     script = (FRONTEND / "app.js").read_text()
-    for call in ("/uploads", "/briefs", "/evidence/", "/diff?against=", "/locations"):
+    for call in ("/uploads", "/briefs", "/evidence/", "/diff?against=", "/locations", "/render?"):
         assert call in script

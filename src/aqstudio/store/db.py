@@ -1,6 +1,7 @@
 """SQLite access: one short-lived connection per operation, schema created on startup."""
 
 import sqlite3
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -57,6 +58,20 @@ class Database:
             conn.execute("DELETE FROM briefs WHERE created_at < ?", (now - BRIEF_TTL_DAYS * 86400,))
             conn.execute(
                 "DELETE FROM llm_cache WHERE created_at < ?", (now - BRIEF_TTL_DAYS * 86400,)
+            )
+
+    def cache_get(self, key: str) -> str | None:
+        """Return a cached JSON value, if present."""
+        with self.connect() as conn:
+            row = conn.execute("SELECT value FROM llm_cache WHERE key = ?", (key,)).fetchone()
+        return str(row[0]) if row else None
+
+    def cache_put(self, key: str, value: str) -> None:
+        """Store a JSON value under a key."""
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO llm_cache (key, value, created_at) VALUES (?, ?, ?)",
+                (key, value, time.time()),
             )
 
     @contextmanager

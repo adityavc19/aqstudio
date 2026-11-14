@@ -122,6 +122,22 @@ SARVAM_BASE_URL = "https://api.sarvam.ai"  # OpenAI-compatible chat API lives un
 SARVAM_MAX_TOKENS = 6000  # reasoning tokens share this budget, so keep it generous.
 SARVAM_TIMEOUT_S = 120.0
 
+# Advisory languages (Sarvam Translate codes) and reading levels.
+ADVISORY_LANGUAGES = {
+    "en": "en-IN",
+    "hi": "hi-IN",
+    "kn": "kn-IN",
+    "mr": "mr-IN",
+    "bn": "bn-IN",
+    "ml": "ml-IN",
+}
+READING_LEVELS = ("simple", "standard")
+SARVAM_TRANSLATE_MODEL = "mayura:v1"
+ADVISORY_DISCLAIMER = (
+    "General guidance only, based on the uploaded data. For any health concern contact your "
+    "doctor or local health authority. AI-written; translations are machine-made, please review."
+)
+
 # Verification and comparison.
 VERIFIER_DROP_UNVERIFIED = False  # False: show unverified claims, visibly marked.
 # A claim citing a poor/unreliable fact must contain one of these hedges.

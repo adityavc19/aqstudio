@@ -100,3 +100,9 @@ dl.facts dt { font-weight: 600; }
 dl.facts dd { margin: 0; overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 @media (max-width: 40rem) { h1 { font-size: 1.4rem; } dialog#evidence { width: 100vw; } }
+@media print {
+  body * { visibility: hidden; }
+  .printable, .printable * { visibility: visible; }
+  .printable { position: absolute; left: 0; top: 0; width: 100%; border: none; }
+  .no-print { display: none; }
+}

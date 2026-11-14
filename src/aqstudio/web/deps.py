@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from fastapi import Request
 
+from aqstudio.advisory.translate import Translator
 from aqstudio.llm.client import LLMClient
 from aqstudio.store.db import Database
 from aqstudio.store.limits import UsageLimiter
@@ -21,6 +22,7 @@ class Deps:
     limiter: UsageLimiter
     upload_limiter: UsageLimiter
     llm: LLMClient | None
+    translator: Translator | None = None
 
 
 def get_deps(request: Request) -> Deps:

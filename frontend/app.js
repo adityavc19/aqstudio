@@ -516,6 +516,59 @@ function actionsSection(brief) {
   );
 }
 
+const LANGUAGES = { en: "English", hi: "हिन्दी (Hindi)", kn: "ಕನ್ನಡ (Kannada)", mr: "मराठी (Marathi)", bn: "বাংলা (Bengali)", ml: "മലയാളം (Malayalam)" };
+
+function advisorySection(brief) {
+  const fmt = h("select", { id: "adv-format" }, h("option", { value: "citizen" }, "Citizen advisory"), h("option", { value: "note" }, "Internal briefing note"));
+  const lang = h("select", { id: "adv-lang" }, Object.entries(LANGUAGES).map(([code, name]) => h("option", { value: code }, name)));
+  const level = h("select", { id: "adv-level" }, h("option", { value: "simple" }, "Simple"), h("option", { value: "standard" }, "Standard"));
+  const out = h("div", { "aria-live": "polite" });
+  const go = h("button", { type: "submit" }, "Show");
+  const form = h(
+    "form",
+    {
+      class: "grid stats",
+      onsubmit: async (e) => {
+        e.preventDefault();
+        go.disabled = true;
+        out.replaceChildren(h("p", { class: "muted" }, "Preparing…"));
+        try {
+          const params = new URLSearchParams({ format: fmt.value, language: lang.value, level: level.value });
+          const doc = await api(`/briefs/${brief.id}/render?${params}`);
+          out.replaceChildren(renderDocument(doc));
+        } catch (err) {
+          out.replaceChildren(errorBox(err.message, err.code));
+        } finally {
+          go.disabled = false;
+        }
+      },
+    },
+    h("div", {}, h("label", { for: "adv-format" }, "Document"), fmt),
+    h("div", {}, h("label", { for: "adv-lang" }, "Language"), lang),
+    h("div", {}, h("label", { for: "adv-level" }, "Reading level"), level),
+    h("div", { class: "actions" }, go),
+  );
+  return section("Advisory and briefing note", false, h("p", { class: "muted small" }, "The internal note is assembled only from verified findings and actions. The citizen advisory is written by the AI and every section is checked; translations are machine-made and their numbers are checked."), form, out);
+}
+
+function renderDocument(doc) {
+  const langCode = doc.language;
+  return h(
+    "article",
+    { class: "card printable", lang: langCode },
+    doc.sections.map((sec) =>
+      h("section", { lang: sec.translated ? langCode : "en" },
+        h("h3", {}, sec.title),
+        h("p", {}, sec.text),
+        !sec.verified ? h("p", { class: "note small", lang: "en" }, "⚠ This part could not be fully checked against the data.") : null,
+        langCode !== "en" && !sec.translated ? h("p", { class: "small muted", lang: "en" }, "Shown in English: the translation could not keep the numbers exactly.") : null,
+      ),
+    ),
+    h("p", { class: "small muted", lang: "en" }, doc.disclaimer),
+    h("div", { class: "actions no-print" }, h("button", { type: "button", class: "secondary", onclick: () => window.print() }, "Print")),
+  );
+}
+
 function section(title, open, ...nodes) {
   const details = h("details", { class: "section" }, h("summary", {}, title), h("div", { class: "body" }, nodes));
   if (open) details.open = true;
@@ -657,6 +710,7 @@ function renderBrief(brief, against) {
     unsure.length ? h("p", { class: "note" }, h("b", {}, "Unsure about: "), unsure.join("; "), ".") : null,
     claimsSection(brief),
     actionsSection(brief),
+    advisorySection(brief),
     where,
     qualitySection(brief),
     h("div", { class: "actions" }, h("a", { class: "btn secondary", href: "#/" }, "Add more data")),

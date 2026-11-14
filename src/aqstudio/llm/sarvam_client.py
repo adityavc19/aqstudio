@@ -4,15 +4,23 @@ import time
 from collections.abc import Callable
 
 import httpx
+from pydantic import BaseModel
 
 from aqstudio.config import SARVAM_BASE_URL, SARVAM_MAX_TOKENS, SARVAM_TIMEOUT_S
 from aqstudio.llm.client import LLMError
-from aqstudio.llm.interpret import build_user_prompt, interpret_with_retry, structured_with_retry
+from aqstudio.llm.interpret import (
+    advisory_prompt,
+    build_user_prompt,
+    interpret_with_retry,
+    structured_with_retry,
+)
 from aqstudio.llm.prompts.actions import SYSTEM as ACTIONS_SYSTEM
+from aqstudio.llm.prompts.advisory import SYSTEM as ADVISORY_SYSTEM
 from aqstudio.llm.prompts.interpret import SYSTEM
 from aqstudio.schemas import (
     ActionDraft,
     ActionsOutput,
+    AdvisoryDraft,
     ClaimDraft,
     Fact,
     InterpretationOutput,
@@ -77,11 +85,16 @@ class SarvamClient:
             self._sleep(2.0**attempt)
         raise LLMError("The AI service request failed.")  # unreachable: the last attempt returns
 
+    def write_advisory(self, facts: list[Fact], level: str) -> AdvisoryDraft:
+        """Ask the model for a citizen advisory at a reading level."""
+        call = lambda p: self._call(p, ADVISORY_SYSTEM, AdvisoryDraft)  # noqa: E731
+        return structured_with_retry(advisory_prompt(facts, level), call, AdvisoryDraft)
+
     def _call(
         self,
         prompt: str,
         system: str = SYSTEM,
-        schema: type[InterpretationOutput] | type[ActionsOutput] = InterpretationOutput,
+        schema: type[BaseModel] = InterpretationOutput,
     ) -> object:
         """One chat completion; returns the raw JSON text for validation."""
         body: dict[str, object] = {

@@ -41,3 +41,8 @@ def structured_with_retry[M: BaseModel](
 def interpret_with_retry(prompt: str, call_model: Callable[[str], object]) -> list[ClaimDraft]:
     """Claims from the model, validated with one retry."""
     return structured_with_retry(prompt, call_model, InterpretationOutput).claims
+
+
+def advisory_prompt(facts: list[Fact], level: str) -> str:
+    """The user prompt for a citizen advisory at a reading level."""
+    return f"{build_user_prompt(facts, Persona.CITIZEN, None)}\nReading level: {level}."

@@ -1,14 +1,22 @@
 """Anthropic-backed LLM client using forced tool use and pydantic validation."""
 
 import anthropic
+from pydantic import BaseModel
 
 from aqstudio.llm.client import LLMError
-from aqstudio.llm.interpret import build_user_prompt, interpret_with_retry, structured_with_retry
+from aqstudio.llm.interpret import (
+    advisory_prompt,
+    build_user_prompt,
+    interpret_with_retry,
+    structured_with_retry,
+)
 from aqstudio.llm.prompts.actions import SYSTEM as ACTIONS_SYSTEM
+from aqstudio.llm.prompts.advisory import SYSTEM as ADVISORY_SYSTEM
 from aqstudio.llm.prompts.interpret import SYSTEM
 from aqstudio.schemas import (
     ActionDraft,
     ActionsOutput,
+    AdvisoryDraft,
     ClaimDraft,
     Fact,
     InterpretationOutput,
@@ -41,11 +49,16 @@ class AnthropicClient:
         call = lambda p: self._call(p, ACTIONS_SYSTEM, ActionsOutput)  # noqa: E731
         return structured_with_retry(prompt, call, ActionsOutput).actions
 
+    def write_advisory(self, facts: list[Fact], level: str) -> AdvisoryDraft:
+        """Ask the model for a citizen advisory at a reading level."""
+        call = lambda p: self._call(p, ADVISORY_SYSTEM, AdvisoryDraft)  # noqa: E731
+        return structured_with_retry(advisory_prompt(facts, level), call, AdvisoryDraft)
+
     def _call(
         self,
         prompt: str,
         system: str = SYSTEM,
-        schema: type[InterpretationOutput] | type[ActionsOutput] = InterpretationOutput,
+        schema: type[BaseModel] = InterpretationOutput,
     ) -> object:
         """Make one forced tool call and return the tool input."""
         try:
