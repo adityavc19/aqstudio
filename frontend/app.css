@@ -218,3 +218,10 @@ nav.toc a { min-height: 44px; display: inline-flex; align-items: center; }
 .do-first a.small, .view-bar button.link { display: inline-flex; align-items: center; min-height: 44px; }
 .chips-inline .chip { min-height: 32px; padding: 0 0.6rem; margin: 2px 0; }
 .chip { min-height: 36px; }
+/* FINDING-004: a real type scale (about 1.25) and balanced headings */
+h1 { font-size: clamp(1.75rem, 1.2rem + 1.8vw, 2.4rem); letter-spacing: -0.02em; }
+h2 { font-size: 1.4rem; letter-spacing: -0.01em; }
+h3 { font-size: 1.125rem; }
+.summary h1 { font-size: clamp(1.8rem, 1.2rem + 2vw, 2.5rem); }
+h1, h2, h3 { text-wrap: balance; }
+p, li { text-wrap: pretty; }
