@@ -71,7 +71,7 @@ def _run_brief(
             brief_id=brief_id,
             on_stage=lambda stage: deps.briefs.set_stage(brief_id, stage),
         )
-        deps.briefs.save_ready(brief, evidence, summarize(brief.stations))
+        deps.briefs.save_ready(brief, evidence, brief.summary or summarize(brief.stations))
     except LLMError as exc:
         deps.briefs.save_failed(brief_id, ErrorBody(code="llm_unavailable", message=str(exc)))
     except IngestError as exc:

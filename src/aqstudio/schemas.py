@@ -259,6 +259,8 @@ class BriefSummary(BaseModel):
 class Brief(BaseModel):
     """A complete stored briefing."""
 
+    summary: BriefSummary | None = None
+
     id: str
     created_at: AwareDatetime
     persona: Persona

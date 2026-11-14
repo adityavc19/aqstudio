@@ -27,7 +27,7 @@ from aqstudio.schemas import (
     Persona,
     RawTable,
 )
-from aqstudio.summary import station_infos
+from aqstudio.summary import station_infos, summarize
 from aqstudio.verify.claims import verify_claims
 
 _CADENCE_ASSUMPTION = Assumption(
@@ -115,8 +115,10 @@ def build_brief(
     drafts = llm.interpret_facts(sent, persona, context)
     on_stage("verifying")
     claims = verify_claims(drafts, facts)
+    infos = station_infos(locations, facts, reliability)
     brief = Brief(
         id=brief_id or uuid.uuid4().hex,
+        summary=summarize(infos),
         created_at=datetime.now(UTC),
         persona=persona,
         context=context,
@@ -128,7 +130,7 @@ def build_brief(
         ledger_summary=dict(Counter(e.rule for e in cleaned.ledger)),
         ledger=cleaned.ledger[:LEDGER_SAMPLE_SIZE],
         assumptions=assumptions,
-        stations=station_infos(locations, facts, reliability),
+        stations=infos,
         notes=notes,
         coordinates_source=(
             CoordinatesSource.UPLOADED
