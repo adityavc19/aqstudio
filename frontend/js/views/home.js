@@ -65,11 +65,12 @@ export function homeView() {
       h("label", { for: "share-link", class: "sr-only" }, "Citizen page link"), shareInput, h("button", { type: "submit", class: "secondary" }, "Open")));
 
   const recent = h("section", { class: "card", "aria-labelledby": "recent-h" }, h("h2", { id: "recent-h" }, "Recent briefs"), h("p", { class: "muted" }, "Loading…"));
+  const quick = h("button", { type: "button", class: "secondary", onclick: () => { textarea.value = sampleCsv(); tabs.select("paste"); send(null); } }, "▶ Try it with synthetic sample data");
   show("Home",
     h("div", { class: "hero" }, h("h1", {}, "Turn air-quality data into a briefing you can act on"),
       h("p", { class: "lede" }, "Add readings from your stations. Code calculates every number; the AI only writes the explanation, and every sentence is checked against the calculated facts and linked to your data.")),
     h("ol", { class: "flow", "aria-label": "How it works" }, h("li", { "aria-current": "step" }, "Add your data"), h("li", {}, "Check how it was read"), h("li", {}, "Get the brief")),
-    h("div", { class: "grid two" }, h("section", { class: "card", "aria-labelledby": "add-h" }, h("h2", { id: "add-h" }, "Add your data"), form), h("div", {}, recent, citizen)),
+    h("div", { class: "grid two" }, h("section", { class: "card", "aria-labelledby": "add-h" }, h("div", { class: "card-head" }, h("h2", { id: "add-h" }, "Add your data"), quick), h("p", { class: "small muted" }, "The sample is made up for demonstration and runs through the real checks and AI."), form), h("div", {}, recent, citizen)),
   );
   loadRecent(recent);
 }

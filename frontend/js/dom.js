@@ -83,6 +83,13 @@ export function when(iso) {
   return `${new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })} IST`;
 }
 
+export function periodLabel(period) {
+  // "2026-11-13..2026-11-15" -> "13 Nov – 15 Nov 2026"
+  const [a, b] = String(period).split("..");
+  const fmt = (d, year) => new Date(`${d}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", ...(year ? { year: "numeric" } : {}) });
+  return b && b !== a ? `${fmt(a, false)} – ${fmt(b, true)}` : fmt(a, true);
+}
+
 export function categoryLabel(category) {
   return category === "insufficient_data" ? "Not enough data" : category;
 }

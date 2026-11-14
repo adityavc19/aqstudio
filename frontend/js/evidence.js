@@ -26,8 +26,9 @@ export function factTitle(fact) {
   return who + (kinds[fact.kind] || words(fact.kind));
 }
 
-export function evidenceChips(briefId, factIds) {
-  return h("div", { class: "chips" }, h("span", { class: "small muted" }, "Evidence:"), factIds.map((fid) => h("button", { type: "button", class: "secondary chip", onclick: () => openEvidence(briefId, fid), "aria-label": `Show evidence ${fid}` }, fid)));
+export function evidenceChips(briefId, factIds, inline = false) {
+  const chips = factIds.map((fid) => h("button", { type: "button", class: "secondary chip", onclick: () => openEvidence(briefId, fid), "aria-label": `Show evidence ${fid}` }, fid));
+  return inline ? h("span", { class: "chips-inline" }, chips) : h("div", { class: "chips" }, h("span", { class: "small muted" }, "Evidence:"), chips);
 }
 
 export async function openEvidence(briefId, factId) {

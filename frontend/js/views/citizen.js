@@ -1,4 +1,4 @@
-import { api, categoryBadge, errorBox, gradeBadge, h, num, radioTabs, show, when } from "../dom.js";
+import { CATEGORY, api, categoryBadge, categoryLabel, errorBox, gradeBadge, h, num, periodLabel, radioTabs, show, when } from "../dom.js";
 import { LANGUAGES, viewToggle } from "./brief.js";
 
 const GROUPS = { everyone: "Everyone", children: "Children", older_adults: "Older adults", sensitive_groups: "Sensitive groups", data: "About the data" };
@@ -59,28 +59,38 @@ export async function citizenView(shareId) {
 
   show("Air near you",
     viewToggle("citizen", sessionStorage.getItem(`aq.share.${shareId}`), shareId),
-    h("p", { class: "badge c-na notice" }, page.notice),
     h("h1", {}, "Air near you"),
-    h("p", { class: "lede" }, `${page.status_line}. Data for ${page.period || "the uploaded period"}, published ${when(page.created_at)}.`),
-    h("p", { class: "note" }, page.data_note),
-    h("form", { class: "card inline", role: "search", onsubmit: (e) => { e.preventDefault(); search(); } },
-      h("label", { for: "area" }, "Your area or nearest station"), h("p", { id: "area-help", class: "muted small" }, "Type part of a station name."), query, h("button", { type: "submit" }, "Check")),
+    h("p", { class: "muted" }, `${page.period ? periodLabel(page.period) : "Uploaded period"} · published ${when(page.created_at)}`),
     result,
+    h("form", { class: "search-row", role: "search", onsubmit: (e) => { e.preventDefault(); search(); } },
+      h("label", { for: "area" }, "Not your area? Search by station name"), h("div", { class: "inline-field" }, query, h("button", { type: "submit", class: "secondary" }, "Search")), h("p", { id: "area-help", class: "muted small" }, "Showing the station with the worst air until you search.")),
     h("section", { class: "card", "aria-labelledby": "adv-h" }, h("h2", { id: "adv-h" }, "What to do today"),
-      h("div", { class: "grid controls" }, h("div", {}, h("label", { for: "cit-lang" }, "Language"), lang), h("div", {}, h("label", { for: "cit-level" }, "Reading level"), level), h("div", { class: "actions" }, h("button", { type: "button", onclick: loadAdvice }, "Show advice"))),
-      advice));
+      h("div", { class: "grid controls" }, h("div", {}, h("label", { for: "cit-lang" }, "Language"), lang), h("div", {}, h("label", { for: "cit-level" }, "Reading level"), level), h("div", { class: "actions" }, h("button", { type: "button", class: "secondary", onclick: loadAdvice }, "Update"))),
+      advice),
+    h("p", { class: "small muted fineprint" }, `${page.data_note} ${page.notice}`));
   search();
   loadAdvice();
 }
 
+const PLAIN = {
+  Good: "Air is good. Enjoy outdoor activity.",
+  Satisfactory: "Air is acceptable. Very sensitive people may want to take it easy.",
+  Moderate: "Sensitive groups should reduce long or heavy outdoor exertion.",
+  Poor: "Reduce long outdoor activity, especially children, older adults and people with asthma.",
+  "Very Poor": "Avoid long outdoor activity. Children and older adults should stay indoors where possible.",
+  Severe: "Stay indoors where possible and avoid all outdoor exertion.",
+};
+
 function stationCard(s) {
+  // The answer first: category, a plain-language line, then how far to trust it.
   const weak = s.reliability_grade === "poor" || s.reliability_grade === "unreliable";
-  return h("section", { class: "card station" },
-    h("p", { class: "small muted" }, s.name),
-    h("p", {}, categoryBadge(s.category, "big")),
-    s.aqi == null ? h("p", {}, "Not enough data for an AQI at this station.") : h("p", { class: "big-text" }, `AQI ${num(s.aqi, 0)}`),
+  const [, cls] = CATEGORY[s.category] || CATEGORY.insufficient_data;
+  return h("section", { class: `answer ${cls}`, "aria-labelledby": "answer-h" },
+    h("p", { class: "answer-place" }, s.name),
+    h("h2", { id: "answer-h", class: "answer-cat" }, categoryLabel(s.category), s.aqi == null ? null : h("span", { class: "answer-aqi" }, ` · AQI ${num(s.aqi, 0)}`)),
+    h("p", { class: "answer-line" }, PLAIN[s.category] || "There is not enough data at this station to say how the air is."),
     h("div", { class: "chips" }, gradeBadge(s.reliability_grade)),
-    weak ? h("p", { class: "note" }, "This station's data is unreliable, so treat this reading with caution.") : null);
+    weak ? h("p", { class: "small" }, "⚠ This station's data is unreliable, so treat this reading with caution.") : null);
 }
 
 function list(stations) {

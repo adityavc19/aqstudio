@@ -214,6 +214,7 @@ class Action(BaseModel):
 
     id: str
     persona: Persona
+    title: str = ""
     tier: ActionTier
     effect_type: EffectType
     text: str
@@ -277,6 +278,7 @@ class BriefSummary(BaseModel):
 class ActionDraft(BaseModel):
     """An action as returned by the LLM, before verification."""
 
+    title: str = Field(max_length=100)
     tier: ActionTier
     effect_type: EffectType
     text: str

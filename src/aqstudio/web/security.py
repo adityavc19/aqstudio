@@ -56,4 +56,8 @@ def install_security(app: FastAPI) -> None:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
+        if not request.url.path.startswith("/api/"):
+            # Frontend files revalidate on every load (a cheap 304), so a deploy is never masked
+            # by stale cached JavaScript modules.
+            response.headers["Cache-Control"] = "no-cache"
         return response

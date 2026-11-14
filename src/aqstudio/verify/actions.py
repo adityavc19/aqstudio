@@ -21,7 +21,7 @@ def verify_actions(drafts: list[ActionDraft], facts: list[Fact], persona: Person
     by_id = {f.id: f for f in facts}
     kept: list[Action] = []
     for draft in drafts:
-        text = " ".join([draft.text, *draft.steps, draft.success_signal])
+        text = " ".join([draft.title, draft.text, *draft.steps, draft.success_signal])
         [check] = verify_claims(
             [ClaimDraft(text=text, fact_ids=draft.fact_ids, confidence=draft.confidence)], facts
         )

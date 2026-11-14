@@ -64,6 +64,7 @@ class FakeLLM:
 def _action(fact_ids: list[str], tier: str = "now", effect: str = "exposure") -> ActionDraft:
     return ActionDraft.model_validate(
         {
+            "title": "Do a thing",
             "tier": tier,
             "effect_type": effect,
             "text": "Do a thing",

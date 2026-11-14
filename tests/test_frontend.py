@@ -32,6 +32,7 @@ def test_frontend_is_served_at_root_and_api_still_works(tmp_path: Path) -> None:
         client.get("/js/main.js").status_code == 200 and client.get("/app.css").status_code == 200
     )
     assert client.get("/api/health").json()["status"] == "ok"
+    assert client.get("/js/main.js").headers["cache-control"] == "no-cache"
 
 
 def _scripts() -> str:

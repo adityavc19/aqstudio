@@ -1,5 +1,6 @@
 import {
-  CATEGORY, CATEGORY_ORDER, PERSONAS, api, categoryBadge, errorBox, gradeBadge, h,
+  CATEGORY, CATEGORY_ORDER, PERSONAS, api, categoryBadge, categoryLabel, errorBox, gradeBadge, h,
+  periodLabel,
   num, plural, postJson, radioTabs, section, show, sleep, table, when, words,
 } from "../dom.js";
 import { evidenceChips } from "../evidence.js";
@@ -61,31 +62,71 @@ function unsureAbout(brief) {
   return items.concat(brief.notes);
 }
 
-function distribution(stations) {
+function kpis(brief) {
+  // The four numbers an officer needs first: how bad, where, how trustworthy, and when.
   const counts = {};
-  stations.forEach((s) => (counts[s.category] = (counts[s.category] || 0) + 1));
-  const present = CATEGORY_ORDER.filter((c) => counts[c]);
-  return h("div", {},
-    h("div", { class: "dist", "aria-hidden": "true" }, present.map((c) => h("span", { class: `dist-seg ${CATEGORY[c][1]}`, style: `flex:${counts[c]}` }, CATEGORY[c][0]))),
-    h("p", { class: "chips" }, present.map((c) => h("span", {}, categoryBadge(c), ` ${counts[c]}`))));
+  brief.stations.forEach((s) => (counts[s.category] = (counts[s.category] || 0) + 1));
+  const worst = brief.summary ? brief.summary.worst_category : "insufficient_data";
+  const unreliable = brief.summary ? brief.summary.unreliable_count : 0;
+  const verified = brief.claims.filter((c) => c.status === "verified").length;
+  const period = brief.facts.find((f) => f.period)?.period;
+  const tile = (label, value, extra) => h("div", { class: "kpi" }, h("span", { class: "kpi-label" }, label), h("span", { class: "kpi-value" }, value), extra ? h("span", { class: "kpi-extra" }, extra) : null);
+  return h("div", { class: "kpis" },
+    tile("Worst category", categoryBadge(worst, "big")),
+    tile("Stations", String(brief.stations.length), CATEGORY_ORDER.filter((c) => counts[c]).map((c) => `${counts[c]} ${categoryLabel(c)}`).join(" · ")),
+    tile("Data you can trust", `${brief.stations.length - unreliable} of ${brief.stations.length}`, unreliable ? `${plural(unreliable, "station")} unreliable` : "all stations usable"),
+    tile("Sentences checked", `${verified} of ${brief.claims.length}`, period ? periodLabel(period) : null));
+}
+
+function dataNotes(brief) {
+  const items = unsureAbout(brief);
+  if (!items.length) return null;
+  return h("details", { class: "data-notes" }, h("summary", {}, `ⓘ ${plural(items.length, "data note")} behind these numbers`), h("ul", {}, items.map((i) => h("li", {}, i))));
+}
+
+function doFirst(brief) {
+  // Top actions right under the headline: what to do comes before why.
+  const order = { now: 0, escalate: 1, context: 2 };
+  const top = [...brief.actions].sort((a, b) => order[a.tier] - order[b.tier]).slice(0, 3);
+  if (!top.length) return null;
+  return h("section", { class: "card do-first", "aria-labelledby": "do-first-h" },
+    h("h2", { id: "do-first-h" }, `Do first · ${PERSONAS[brief.persona] || brief.persona}`),
+    h("ol", { class: "do-list" }, top.map((a) => h("li", {},
+      h("span", { class: `badge tier-${a.tier}` }, TIER[a.tier] || a.tier),
+      h("div", {}, h("b", {}, a.title || a.text), a.title ? h("div", { class: "small" }, a.text) : null, h("div", { class: "small muted" }, `${a.owner} · ${words(a.horizon)}`), a.gated_reason ? h("div", { class: "small warn-text" }, `⚠ ${a.gated_reason}`) : null)))),
+    brief.actions.length > 3 ? h("a", { href: "#sec-actions", class: "small", onclick: (e) => { e.preventDefault(); openSection("sec-actions"); } }, `All ${brief.actions.length} actions with steps ↓`) : null);
+}
+
+function openSection(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.open = true;
+  el.scrollIntoView({ block: "start" });
+  el.querySelector("summary").focus();
 }
 
 function claims(brief) {
   const ok = brief.claims.filter((c) => c.status === "verified").length;
-  return section("sec-claims", "What happened", true,
-    h("p", { class: "muted small" }, `${ok} of ${brief.claims.length} sentences checked against the calculated facts. Unverified sentences are shown and marked, never hidden.`),
-    brief.claims.length ? brief.claims.map((c) => h("article", { class: "item" },
-      h("div", { class: c.status === "verified" ? "verdict ok" : "verdict bad" }, c.status === "verified" ? "✔ Checked against the data" : "⚠ Not verified"),
-      h("p", {}, c.text),
-      evidenceChips(brief.id, c.fact_ids),
-      c.notes.length ? h("ul", { class: "small" }, c.notes.map((n) => h("li", {}, n))) : null)) : h("p", { class: "muted" }, "The AI returned no claims."));
+  const item = (c) => h("li", { class: `claim ${c.status}` },
+    h("span", { class: "claim-mark", "aria-hidden": "true" }, c.status === "verified" ? "✔" : "⚠"),
+    h("div", {},
+      h("span", { class: "sr-only" }, c.status === "verified" ? "Checked against the data: " : "Not verified: "),
+      c.text, " ", evidenceChips(brief.id, c.fact_ids, true),
+      c.notes.length ? h("ul", { class: "small warn-text" }, c.notes.map((n) => h("li", {}, n))) : null));
+  const first = brief.claims.slice(0, 5);
+  const rest = brief.claims.slice(5);
+  return section("sec-claims", "Key findings", true,
+    h("p", { class: "muted small" }, `✔ ${ok} of ${brief.claims.length} sentences checked against the calculated facts. Unverified ones are marked ⚠, never hidden.`),
+    brief.claims.length ? h("ul", { class: "claims" }, first.map(item)) : h("p", { class: "muted" }, "The AI returned no findings."),
+    rest.length ? h("details", { class: "more" }, h("summary", {}, `Show ${rest.length} more findings`), h("ul", { class: "claims" }, rest.map(item))) : null);
 }
 
 function actions(brief) {
   const list = h("div");
   const draw = (filter) => list.replaceChildren(...(brief.actions.filter((a) => filter === "all" || a.effect_type === filter).map((a) => h("article", { class: "item" },
     h("div", { class: "chips" }, h("span", { class: `badge tier-${a.tier}` }, TIER[a.tier] || a.tier), h("span", { class: "badge c-na" }, EFFECT[a.effect_type] || a.effect_type), h("span", { class: "small muted" }, words(a.horizon))),
-    h("h3", {}, a.text),
+    h("h3", {}, a.title || a.text),
+    a.title ? h("p", {}, a.text) : null,
     a.gated_reason ? h("p", { class: "note" }, `⚠ ${a.gated_reason}`) : null,
     h("ol", { class: "small" }, a.steps.map((step) => h("li", {}, step))),
     h("p", { class: "small" }, `Owner: ${a.owner}${a.escalate_to ? ` · Escalate to: ${a.escalate_to}` : ""} · Success looks like: ${a.success_signal}`),
@@ -93,7 +134,7 @@ function actions(brief) {
   if (!brief.actions.length) return section("sec-actions", "What to do", true, h("p", { class: "muted" }, "No actions passed the checks for this brief, so none are shown."));
   const tabs = radioTabs("Filter actions", { all: "All", exposure: "Protect people", source: "Reduce pollution", evidence: "Improve data" }, draw);
   tabs.select("all");
-  return section("sec-actions", `What to do · ${PERSONAS[brief.persona] || brief.persona}`, true,
+  return section("sec-actions", "All actions", false,
     h("p", { class: "muted small" }, "Each action cites the facts it relies on. Actions resting on unreliable data become data checks."), tabs.list, list);
 }
 
@@ -154,7 +195,7 @@ function where(brief) {
   }, h("label", { for: "locations" }, "Add or correct station locations"), h("p", { id: "loc-help", class: "muted small" }, "CSV with columns station_id,lat,lon. Only the map changes; nothing is re-analysed."), text, h("div", { class: "actions" }, h("button", { type: "submit", class: "secondary" }, "Update map")), result);
   draw();
   drawMap(mapHolder, brief.stations);
-  return section("sec-where", "Where", true, tableHolder, heatGrid(brief), mapHolder, h("details", {}, h("summary", {}, "Add locations"), form));
+  return section("sec-where", "Where", true, h("div", { class: "where-grid" }, tableHolder, mapHolder), heatGrid(brief), h("details", {}, h("summary", {}, "Add locations"), form));
 }
 
 async function changed(brief, againstId, holder) {
@@ -234,9 +275,10 @@ export function viewToggle(current, briefId, shareId) {
         e.currentTarget.textContent = "Citizen link copied";
       } }, "Copy citizen link")
     : null;
-  return h("nav", { class: "view-toggle", "aria-label": "View" },
-    briefId ? link("operator", "Operator view", `#/brief/${briefId}`) : null,
-    shareId ? link("citizen", "Citizen view", `#/c/${shareId}`) : null,
+  return h("div", { class: "view-bar" },
+    h("nav", { class: "view-toggle", "aria-label": "View" },
+      briefId ? link("operator", "Operator view", `#/brief/${briefId}`) : null,
+      shareId ? link("citizen", "Citizen view", `#/c/${shareId}`) : null),
     copy);
 }
 
@@ -255,16 +297,17 @@ async function render(brief, against, shareId) {
   const unsure = unsureAbout(brief);
   const compareId = against || brief.previous_id;
   const changedHolder = h("div");
-  const toc = [["sec-claims", "What happened"], ["sec-actions", "What to do"], ["sec-patterns", "Patterns"], ["sec-where", "Where"], ...(compareId ? [["sec-changed", "What changed"]] : []), ["sec-quality", "Data quality"], ["sec-advisory", "Advisory"]];
+  const toc = [["sec-claims", "Findings"], ["sec-where", "Where"], ["sec-actions", "Actions"], ["sec-patterns", "Patterns"], ...(compareId ? [["sec-changed", "What changed"]] : []), ["sec-quality", "Data quality"], ["sec-advisory", "Advisory"]];
   show("Brief",
     viewToggle("operator", brief.id, shareId),
     h("section", { class: "summary card" },
-      h("p", { class: "small muted" }, `${PERSONAS[brief.persona] || brief.persona} · created ${when(brief.created_at)}${brief.context ? ` · ${brief.context}` : ""}`),
+      h("p", { class: "small muted" }, `Brief for ${PERSONAS[brief.persona] || brief.persona} · created ${when(brief.created_at)}${brief.context ? ` · ${brief.context}` : ""}`),
       h("h1", {}, brief.summary ? brief.summary.status_line : "Air quality brief"),
-      distribution(brief.stations),
-      unsure.length ? h("p", { class: "note" }, h("b", {}, "Unsure about: "), unsure.join("; "), ".") : null),
-    h("nav", { class: "toc", "aria-label": "In this brief" }, toc.map(([id, label]) => h("a", { href: `#${id}`, onclick: (e) => { e.preventDefault(); const el = document.getElementById(id); if (el) { el.open = true; el.scrollIntoView({ block: "start" }); el.querySelector("summary").focus(); } } }, label))),
-    claims(brief), actions(brief), patterns(brief), where(brief), changedHolder, quality(brief), advisory(brief),
+      kpis(brief),
+      dataNotes(brief)),
+    doFirst(brief),
+    h("nav", { class: "toc", "aria-label": "In this brief" }, toc.map(([id, label]) => h("a", { href: `#${id}`, onclick: (e) => { e.preventDefault(); openSection(id); } }, label))),
+    claims(brief), where(brief), actions(brief), patterns(brief), changedHolder, quality(brief), advisory(brief),
     h("div", { class: "actions" }, h("a", { class: "btn secondary", href: "#/" }, "Add more data")));
   if (compareId) changed(brief, compareId, changedHolder);
 }
