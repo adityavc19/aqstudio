@@ -1,37 +1,43 @@
 """Application settings and domain constants.
 
-Domain constants (AQI breakpoints, plausibility ranges) are added with a cited
-source in the phase that first uses them; none are guessed here.
+Every constant with domain meaning lives here with its source or an explicit ASSUMPTION tag.
 """
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LOCAL_TZ = "Asia/Kolkata"  # IST, +05:30; all readings are converted to this zone.
+IST_OFFSET_MINUTES = 330
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_UPLOAD_ROWS = 200_000
-RATE_LIMIT_PER_HOUR = 5  # LLM-backed requests per client IP per hour.
-DAILY_CAP = 100  # LLM-backed requests per rolling 24h across all clients (protects API credits).
-MIN_COVERAGE_PCT = 75.0  # below this an aggregate is labelled unreliable.
+PREVIEW_ROWS = 10
+LEDGER_SAMPLE_SIZE = 200  # ledger entries embedded in a Brief; full counts are in ledger_summary.
 
+# Rate limits are generous so automated evaluators are not blocked; the provider spend cap
+# is the hard backstop.
+RATE_LIMIT_PER_HOUR = 20  # LLM-backed requests per client IP per hour.
+DAILY_CAP = 300  # LLM-backed requests per rolling 24h across all clients.
 
-class Settings(BaseSettings):
-    """Environment-backed settings; secrets are never logged or sent to clients."""
-
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
-
-    anthropic_api_key: SecretStr = SecretStr("")
-    anthropic_model: str = "claude-sonnet-5-5"
-    session_secret: SecretStr = SecretStr("")
-    database_path: str = "aqstudio.sqlite3"
-
+# Reliability grading by coverage/score. ASSUMPTION: thresholds chosen for readability, not a
+# published standard.
+RELIABILITY_GRADES = ((90.0, "good"), (75.0, "fair"), (50.0, "poor"))
+FLAG_PENALTY = {"critical": 15.0, "warn": 5.0, "info": 0.0}  # ASSUMPTION: score points per flag.
 
 MISSING_TOKENS = frozenset({"", "-", "*", "na", "nan", "none", "null"})
 CEILING_SENTINEL = 500.0  # sensor-fault ceiling seen in KSPCB exports (see CLAUDE.md section 6).
-CEILING_MIN_RUN = 4  # consecutive sentinel readings before it is treated as a fault.
-STUCK_MIN_RUN = 8  # identical consecutive readings before a sensor is treated as stuck.
-GAP_MIN_HOURS = 24.0  # silence between valid readings that counts as a gap.
+CEILING_MIN_RUN = 4  # ASSUMPTION: consecutive sentinel readings before it is treated as a fault.
+STUCK_MIN_RUN = 8  # ASSUMPTION: identical consecutive readings before a sensor is stuck.
+GAP_MIN_HOURS = 24.0  # ASSUMPTION: silence between valid readings that counts as a gap.
 NON_POLLUTANT_COLUMNS = frozenset({"station id", "state", "city", "station name", "timestamp"})
+
+# ASSUMPTION: coarse physical plausibility ranges (inclusive) for Indian ambient monitoring;
+# values outside are flagged, never deleted. Keys are canonical pollutant names.
+PLAUSIBLE_RANGES: dict[str, tuple[float, float]] = {
+    "PM2.5": (0.0, 1000.0),
+    "PM10": (0.0, 2000.0),
+    "AT": (-5.0, 50.0),
+    "RH": (5.0, 100.0),
+}
 
 # CPCB National AQI (India). Concentration edges map to index edges INDEX_EDGES; the Severe
 # band tops out at edge5 + (edge5 - edge4), the CPCB convention that reproduces the published
@@ -63,3 +69,29 @@ MIN_AQI_POLLUTANTS = 3  # SOURCE: same page; one of them must be PM2.5 or PM10.
 MIN_DAY_HOURS = 16  # SOURCE: same page; minimum hours of data for a sub-index.
 MIN_8H_HOURS = 6  # ASSUMPTION: valid hours needed inside an 8-hour window for CO and O3.
 EIGHT_HOUR_POLLUTANTS = frozenset({"CO", "O3"})
+
+# PM2.5/PM10 ratio hints. ASSUMPTION: coarse rules of thumb, presented as hints only.
+PM_RATIO_COMBUSTION = 0.6
+PM_RATIO_DUST = 0.4
+HOTSPOT_MIN_STATIONS = 2
+
+# Verification and comparison.
+VERIFIER_DROP_UNVERIFIED = False  # False: show unverified claims, visibly marked.
+NUMBER_REL_TOLERANCE = 0.01  # quoted numbers may differ from the fact by rounding only.
+NUMBER_ABS_TOLERANCE = 0.005
+COMPARE_MIN_CHANGE_PCT = 5.0  # ASSUMPTION: relative change below this is not reported.
+COVERAGE_SHIFT_PTS = 10.0  # ASSUMPTION: coverage change that explains a value change.
+
+
+class Settings(BaseSettings):
+    """Environment-backed settings; secrets are never logged or sent to clients."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    anthropic_api_key: SecretStr = SecretStr("")
+    anthropic_model: str = "claude-sonnet-5-5"
+    session_secret: SecretStr = SecretStr("")
+    refresh_token: SecretStr = SecretStr("")
+    database_path: str = "aqstudio.sqlite3"
+    frontend_dir: str = "frontend"
+    cookie_secure: bool = False

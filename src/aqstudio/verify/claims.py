@@ -1,8 +1,12 @@
 """Verify LLM claims against computed facts."""
 
+from aqstudio.config import NUMBER_ABS_TOLERANCE, NUMBER_REL_TOLERANCE, VERIFIER_DROP_UNVERIFIED
 from aqstudio.schemas import Claim, ClaimDraft, ClaimStatus, Fact
 
-NUMBER_TOLERANCE = 0.51  # facts are rounded for display; allow rounding differences only.
+
+def _matches(actual: float, quoted: float) -> bool:
+    """True when a quoted number equals the fact value up to rounding."""
+    return abs(actual - quoted) <= max(NUMBER_ABS_TOLERANCE, NUMBER_REL_TOLERANCE * abs(actual))
 
 
 def verify_claims(drafts: list[ClaimDraft], facts: list[Fact]) -> list[Claim]:
@@ -11,19 +15,23 @@ def verify_claims(drafts: list[ClaimDraft], facts: list[Fact]) -> list[Claim]:
     verified: list[Claim] = []
     for draft in drafts:
         notes: list[str] = []
-        if not draft.cited_fact_ids:
+        if not draft.fact_ids:
             notes.append("No fact cited.")
-        notes.extend(f"Unknown fact id: {i}" for i in draft.cited_fact_ids if i not in by_id)
+        notes.extend(f"Unknown fact id: {i}" for i in draft.fact_ids if i not in by_id)
         for quote in draft.quoted_values:
             fact = by_id.get(quote.fact_id)
-            if fact is None or quote.fact_id not in draft.cited_fact_ids:
+            if fact is None or quote.fact_id not in draft.fact_ids:
                 notes.append(f"Quoted number refers to uncited or unknown fact: {quote.fact_id}")
                 continue
-            actual = fact.statement_data.get(quote.field)
-            if not isinstance(actual, int | float) or abs(actual - quote.value) > NUMBER_TOLERANCE:
+            actual = fact.values.get(quote.field)
+            if not isinstance(actual, int | float) or not _matches(float(actual), quote.value):
                 notes.append(
                     f"Quoted {quote.field}={quote.value} does not match fact value {actual}."
                 )
+        if notes and VERIFIER_DROP_UNVERIFIED:
+            continue
         status = ClaimStatus.UNVERIFIED if notes else ClaimStatus.VERIFIED
-        verified.append(Claim(**draft.model_dump(), status=status, notes=notes))
+        verified.append(
+            Claim(**draft.model_dump(), id=f"C{len(verified) + 1}", status=status, notes=notes)
+        )
     return verified

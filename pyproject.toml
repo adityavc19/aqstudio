@@ -1,11 +1,12 @@
 [project]
 name = "aqstudio"
-version = "0.1.0"
+version = "0.2.0"
 description = "Civic Air Quality Briefing Studio"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "anthropic==2.8.0",
     "fastapi==0.162.7",
+    "itsdangerous==2.2.0",
     "jinja2==3.1.6",
     "pandas==3.1.1",
     "pydantic==2.14.3",

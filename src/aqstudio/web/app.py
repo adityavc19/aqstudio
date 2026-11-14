@@ -1,124 +1,65 @@
-"""FastAPI app: upload or paste a long-format CSV and get a verified brief."""
+"""FastAPI app factory: JSON API under /api, optional static frontend at /."""
 
-from collections import Counter
+import secrets
 from pathlib import Path
-from typing import Annotated
 
 import anthropic
-from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, Response
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
-from aqstudio.clean.long import clean_long
-from aqstudio.config import DAILY_CAP, MAX_UPLOAD_BYTES, RATE_LIMIT_PER_HOUR, Settings
-from aqstudio.facts.engine import build_facts
-from aqstudio.ingest.long_csv import IngestError, parse_long_csv
-from aqstudio.llm.anthropic_client import AnthropicInterpreter
-from aqstudio.llm.base import Interpreter, LLMError
-from aqstudio.quality.detectors import detect_all
-from aqstudio.schemas import Persona
+from aqstudio.config import DAILY_CAP, RATE_LIMIT_PER_HOUR, Settings
+from aqstudio.llm.anthropic_client import AnthropicClient
+from aqstudio.llm.cache import CachedLLMClient
+from aqstudio.llm.client import LLMClient
+from aqstudio.store.db import Database
 from aqstudio.store.limits import UsageLimiter
-from aqstudio.verify.claims import verify_claims
+from aqstudio.store.repos import BriefRepo, UploadRepo
+from aqstudio.web.deps import Deps
+from aqstudio.web.errors import install_error_handlers
+from aqstudio.web.routes import briefs, health, uploads
+from aqstudio.web.security import install_security
 
-_BASE = Path(__file__).parent
-_ALLOWED_SUFFIXES = {".csv", ".txt"}
-_CSP = "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+_SESSION_MAX_AGE = 30 * 24 * 3600
 
 
-def _default_interpreter() -> Interpreter | None:
-    """Build the real interpreter, or None when no API key is configured."""
-    settings = Settings()
+def _build_llm(settings: Settings, db: Database) -> LLMClient | None:
+    """Build the real, cached LLM client; None when no API key is configured."""
     key = settings.anthropic_api_key.get_secret_value()
     if not key:
         return None
-    return AnthropicInterpreter(anthropic.Anthropic(api_key=key), settings.anthropic_model)
+    inner = AnthropicClient(anthropic.Anthropic(api_key=key), settings.anthropic_model)
+    return CachedLLMClient(inner, db, settings.anthropic_model)
 
 
-def _client_ip(request: Request) -> str:
-    """Client IP; behind Render's proxy the last X-Forwarded-For entry is the one it appended."""
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[-1].strip()
-    return request.client.host if request.client else "unknown"
-
-
-def create_app(
-    interpreter: Interpreter | None = None, limiter: UsageLimiter | None = None
-) -> FastAPI:
-    """Create the app; interpreter and limiter are injected so tests can substitute fakes."""
-    app = FastAPI(title="Civic Air Quality Briefing Studio", docs_url=None, redoc_url=None)
-    templates = Jinja2Templates(directory=_BASE / "templates")
-    app.mount("/static", StaticFiles(directory=_BASE / "static"), name="static")
-    resolved = interpreter if interpreter is not None else _default_interpreter()
-    usage = limiter or UsageLimiter(Settings().database_path, RATE_LIMIT_PER_HOUR, DAILY_CAP)
-
-    @app.middleware("http")
-    async def security_headers(request: Request, call_next):  # type: ignore[no-untyped-def]
-        response: Response = await call_next(request)
-        response.headers["Content-Security-Policy"] = _CSP
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        return response
-
-    def page(request: Request, name: str, status: int = 200, **ctx: object) -> HTMLResponse:
-        return templates.TemplateResponse(request, name, ctx, status_code=status)
-
-    @app.get("/", response_class=HTMLResponse)
-    def index(request: Request) -> HTMLResponse:
-        return page(request, "index.html", personas=list(Persona))
-
-    @app.post("/brief", response_class=HTMLResponse)
-    async def brief(
-        request: Request,
-        persona: Annotated[Persona, Form()],
-        pasted: Annotated[str, Form()] = "",
-        file: Annotated[UploadFile | None, File()] = None,
-    ) -> HTMLResponse:
-        def fail(message: str, status: int) -> HTMLResponse:
-            return page(request, "error.html", status, message=message)
-
-        origin = request.headers.get("origin")
-        if origin and origin != f"{request.url.scheme}://{request.headers.get('host', '')}":
-            return fail("Cross-origin submissions are not allowed.", 403)
-
-        text = pasted
-        if file is not None and file.filename:
-            if Path(file.filename).suffix.lower() not in _ALLOWED_SUFFIXES:
-                return fail("Only .csv or .txt files are accepted.", 415)
-            data = await file.read(MAX_UPLOAD_BYTES + 1)
-            if len(data) > MAX_UPLOAD_BYTES:
-                return fail("Upload exceeds the maximum file size.", 413)
-            try:
-                text = data.decode("utf-8-sig")
-            except UnicodeDecodeError:
-                return fail("The file is not valid UTF-8 text.", 400)
-        try:
-            cleaned = clean_long(parse_long_csv(text))
-        except IngestError as exc:
-            return fail(str(exc), 400)
-        flags = detect_all(cleaned.readings)
-        facts = build_facts(cleaned.readings, flags)
-        if resolved is None:
-            return fail("The AI service is not configured on this server (no API key).", 503)
-        decision = usage.check_and_record(_client_ip(request))
-        if not decision.allowed:
-            return fail(decision.reason, 429)
-        try:
-            drafts = resolved.interpret_facts(
-                facts, dict(Counter(f.kind.value for f in flags)), persona
-            )
-        except LLMError as exc:
-            return fail(f"Could not generate the interpretation: {exc} No brief was produced.", 502)
-        return page(
-            request,
-            "brief.html",
-            persona=persona,
-            claims=verify_claims(drafts, facts),
-            facts=facts,
-            flags=flags,
-            ledger=cleaned.ledger,
-            ledger_counts=dict(Counter(e.rule for e in cleaned.ledger)),
-        )
-
+def create_app(settings: Settings | None = None, llm: LLMClient | None = None) -> FastAPI:
+    """Create the app; settings and the LLM client are injectable so tests can substitute fakes."""
+    settings = settings or Settings()
+    db = Database(settings.database_path)
+    app = FastAPI(
+        title="Civic Air Quality Briefing Studio", version="0.2.0", docs_url=None, redoc_url=None
+    )
+    app.state.deps = Deps(
+        db=db,
+        uploads=UploadRepo(db),
+        briefs=BriefRepo(db),
+        limiter=UsageLimiter(settings.database_path, RATE_LIMIT_PER_HOUR, DAILY_CAP),
+        llm=llm if llm is not None else _build_llm(settings, db),
+    )
+    secret = settings.session_secret.get_secret_value() or secrets.token_hex(32)
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=secret,
+        same_site="lax",
+        https_only=settings.cookie_secure,
+        max_age=_SESSION_MAX_AGE,
+    )
+    install_security(app)
+    install_error_handlers(app)
+    app.include_router(health.router, prefix="/api")
+    app.include_router(uploads.router, prefix="/api")
+    app.include_router(briefs.router, prefix="/api")
+    frontend = Path(settings.frontend_dir)
+    if frontend.is_dir():
+        app.mount("/", StaticFiles(directory=frontend, html=True), name="frontend")
     return app

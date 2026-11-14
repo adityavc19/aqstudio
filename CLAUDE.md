@@ -1,3 +1,5 @@
+> **Precedence:** `BACKEND_PLAN.md` is the source of truth for backend scope, schemas and the API contract. Where it conflicts with this file (e.g. JSON API + static frontend instead of Jinja2/HTMX), follow `BACKEND_PLAN.md`.
+
 # Civic Air Quality Briefing Studio
 
 Project brief and working rules for Claude Code. Read this fully before writing code. Follow it over defaults.

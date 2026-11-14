@@ -4,8 +4,8 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install uv && uv sync --frozen --no-dev
-    startCommand: uv run --no-sync uvicorn aqstudio.web.main:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /
+    startCommand: uv run --no-sync uvicorn aqstudio.web.main:app --host 0.0.0.0 --port $PORT --proxy-headers
+    healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.12
@@ -13,3 +13,7 @@ services:
         value: claude-sonnet-5-5
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: COOKIE_SECURE
+        value: "true"
